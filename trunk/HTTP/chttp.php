@@ -8,6 +8,8 @@ function util_array2query($in_array)
 	return implode('&', $params);
 }
 
+define('CHTTP_SOCKET_ERROR_TIMEOUT', 20);
+
 define('CHTTP_READYSTATE_UNINITIALIZED', '0');
 define('CHTTP_READYSTATE_LOADING_H', '1-1');
 define('CHTTP_READYSTATE_LOADING_B', '1-2');
@@ -17,14 +19,14 @@ define('CHTTP_READYSTATE_COMPLETED', '4');
 
 define('CHTTP_RCEVRESPONSE_WOULDBLOCK', 1);
 define('CHTTP_RCEVRESPONSE_IOSLEEP', 2);
-define('CHTTP_RCEVRESPONSE_EOF', 3);
+define('CHTTP_RCEVRESPONSE_DONE', 3);
 
 define('CRLF', "\r\n");
 define('CRLFLEN', strlen(CRLF));
 
 class CHttp
 {
-	function CHttp($in_url, $in_proxy = NULL, $in_timeout = 5) {
+	function CHttp($in_url, $in_proxy = NULL) {
 		// $in_proxy : "hostname" or "hostname:port"
 		$this->_parsedUrl = parse_url($in_url);
 		if (!array_key_exists('path', $this->_parsedUrl)) {
@@ -43,7 +45,6 @@ class CHttp
 		} else {
 			$this->_proxy = NULL;
 		}
-		$this->_timeout = $in_timeout;
 		$this->_readyState = CHTTP_READYSTATE_UNINITIALIZED;
 		$this->_socket = NULL;
 		$this->_headers = array();
@@ -102,7 +103,7 @@ class CHttp
 			$this->_rawRequest = "{$this->_method} {$request_line} HTTP/1.1\r\n";
 		}
 		$host = str_replace('://localhost', '://127.0.0.1', $host);
-		$this->_socket = @fsockopen($host, $port, $errno, $errstr, $this->_timeout);
+		$this->_socket = @fsockopen($host, $port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
 		if (!$this->_socket) {
 			$this->_DP("{$errno}\n{$errstr}");
 		}
@@ -118,6 +119,14 @@ class CHttp
 		$this->_readyState = CHTTP_READYSTATE_LOADING_H;
 	}
 
+	function _fclose() {
+		if ($this->_socket) {
+			fclose($this->_socket);
+			$this->_socket = NULL;
+			$this->_readyState = CHTTP_READYSTATE_LOADED;
+		}
+	}
+
 	function rcevResponse($in_header_only = FALSE) {
 		$ret = CHTTP_RCEVRESPONSE_WOULDBLOCK;
 		switch ($this->_readyState) {
@@ -127,10 +136,8 @@ class CHttp
 		case CHTTP_READYSTATE_LOADING_H :
 		case CHTTP_READYSTATE_LOADING_B :
 			if (feof($this->_socket)) {
-				fclose($this->_socket);
-				$this->_socket = NULL;
-				$this->_readyState = CHTTP_READYSTATE_LOADED;
-				$ret = CHTTP_RCEVRESPONSE_EOF;
+				$this->_fclose();
+				$ret = CHTTP_RCEVRESPONSE_DONE;
 			} else {
 				$line = fgets($this->_socket);
 				if (!$line) {
@@ -153,10 +160,8 @@ class CHttp
 						// header --> entity body
 						$this->_bodyOffset = strlen($this->_rawResponse);
 						if ($in_header_only) {
-							fclose($this->_socket);
-							$this->_socket = NULL;
-							$this->_readyState = CHTTP_READYSTATE_LOADED;
-							$ret = CHTTP_RCEVRESPONSE_EOF;
+							$this->_fclose();
+							$ret = CHTTP_RCEVRESPONSE_DONE;
 						} else {
 							$this->_readyState = CHTTP_READYSTATE_LOADING_B;
 						}
@@ -168,17 +173,15 @@ class CHttp
 		case CHTTP_READYSTATE_INTERACTIVE :
 		case CHTTP_READYSTATE_COMPLETED :
 		default :
-			$ret = CHTTP_RCEVRESPONSE_EOF;
+			$ret = CHTTP_RCEVRESPONSE_DONE;
 			break;
 		}
 		return $ret;
 	}
 
-	function rcevResponseHeader() {
-		$this->rcevResponseAll(TRUE);
-	}
-
-	function rcevResponseAll($in_header_only = FALSE) {
+	function rcevResponseAll($in_header_only = FALSE, $in_timeout = 5) {
+		// $in_timeout : if timeout, socket will be closed.
+		$start = time();
 		while (TRUE) {
 			switch ($this->rcevResponse($in_header_only)) {
 			case CHTTP_RCEVRESPONSE_WOULDBLOCK :
@@ -187,21 +190,25 @@ class CHttp
 				// 50msec
 				usleep(50000);
 				break;
-			case CHTTP_RCEVRESPONSE_EOF :
+			case CHTTP_RCEVRESPONSE_DONE :
 				break 2;
 			default :
 				$this->_DP('invalid return from rcevResponse.');
 				break;
 			}
+			if ($in_timeout && (time() - $start > $in_timeout)) {
+				$this->_fclose();
+				break;
+			}
 		}
 	}
 
-	function GET() {
+	function GET($in_header_only = FALSE) {
 		$this->sendRequest('GET');
-		$this->rcevResponseAll();
+		$this->rcevResponseAll($in_header_only);
 	}
 
-	function POST($in_postdata) {
+	function POST($in_postdata, $in_header_only = FALSE) {
 		if (is_array($in_postdata)) {
 			$this->setHeader('Content-Type', 'application/x-www-form-urlencoded');
 			$body = util_array2query($in_postdata);
@@ -209,7 +216,7 @@ class CHttp
 			$body = $in_postdata;
 		}
 		$this->sendRequest('POST', $body);
-		$this->rcevResponseAll();
+		$this->rcevResponseAll($in_header_only);
 	}
 
 	function setAuthHeader($in_user, $in_pass) {
@@ -230,10 +237,20 @@ class CHttp
 	function _setDefaultHeaders() {
 		$default = array(
 			'Host'			=> $this->_parsedUrl['host'],
-			'Accept'		=> '*/*',
 			'Connection'	=> 'Close'
 		);
+		$browser_headers = apache_request_headers();
+		$asis = array('User-Agent', 'Accept', 'Accept-Language', 'Accept-Charset');
+		foreach ($browser_headers as $key => $val) {
+			if (in_array($key, $asis)) {
+				$default[$key] = $asis;
+			}
+		}
 		$this->setHeaders($default);
+	}
+
+	function getStatusLine() {
+		return explode(' ', $this->_statusLine, 3);
 	}
 
 	function getResponseHeaders($in_require_hash = TRUE) {
@@ -278,7 +295,7 @@ class CHttp
 
 	function _substr($in_s, $in_e = NULL) {
 		if (!$this->_rawResponse) {
-			$this->_DP('no data in _rawResponse');
+			return '';
 		}
 		if ($in_e) {
 			return substr($this->_rawResponse, $in_s, ($in_e - $in_s));
@@ -342,7 +359,7 @@ class CHttp
 
 class CHttpRequestPool
 {
-	function CHttpRequestPool($in_timeout = 30) {
+	function CHttpRequestPool($in_timeout = 10) {
 		$this->_pool = array();
 		$this->_timeout = $in_timeout;
 	}
@@ -373,7 +390,7 @@ class CHttpRequestPool
 						break;
 					case CHTTP_RCEVRESPONSE_IOSLEEP :
 						break;
-					case CHTTP_RCEVRESPONSE_EOF :
+					case CHTTP_RCEVRESPONSE_DONE :
 						$finishd++;
 						$iosleep = FALSE;
 						break;
@@ -383,6 +400,9 @@ class CHttpRequestPool
 					}
 				}
 				if ((time() - $start) > $this->_timeout) {
+					foreach ($this->_pool as $http) {
+						$http->_fclose();
+					}
 					break;
 				}
 				if ($iosleep) {
@@ -402,7 +422,7 @@ class CHttpRequestPool
 	unittest
 */
 
-return;
+//return;
 
 define('UT_SERVERMODE', (array_key_exists('UT_SERVERMODE', $_GET) ? $_GET['UT_SERVERMODE'] : NULL));
 
@@ -601,6 +621,11 @@ function __unittest__CHttp($in_servermode = NULL)
 		$http = new CHttp($url);
 		$http->GET();
 		$r = $http->getResponseHeaders();
+
+		$s = $http->getStatusLine();
+		if ($s[1] != 302) {
+			$http->_DP("test (4) failed. (status code : {$s[1]})");
+		}
 		$http = new CHttp($r['Location']);
 		$http->GET();
 		$r = $http->getResponseHeaders();
@@ -665,6 +690,25 @@ function __unittest__CHttp($in_servermode = NULL)
 		}
 		if (!in_array('x-dup: 2nd', $headers)) {
 			$http->_DP('test (8) failed. (2st is not found)');
+		}
+		// (9) safe API
+		$prof->rec();
+		$http = new CHttp($url);
+		$r = $http->getResponseHeader('hoge');
+		if ($r !== NULL) {
+			$http->_DP('test (9-1) failed.');
+		}
+		$r = $http->getResponseHeaders(TRUE);
+		if (!is_array($r)) {
+			$http->_DP('test (9-2) failed.');
+		}
+		$r = $http->getResponseHeaders(FALSE);
+		if (!is_array($r)) {
+			$http->_DP('test (9-3) failed.');
+		}
+		$r = $http->getBody();
+		if ($r !== '') {
+			$http->_DP('test (9-4) failed.');
 		}
 		$prof->rec();
 		$prof->showScore();
