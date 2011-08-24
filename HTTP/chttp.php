@@ -9,6 +9,7 @@ function util_array2query($in_array)
 }
 
 define('CHTTP_SOCKET_ERROR_TIMEOUT', 20);
+define('CHTTP_SOCKET_ABORT_TIMEOUT', 5);
 
 define('CHTTP_READYSTATE_UNINITIALIZED', '0');
 define('CHTTP_READYSTATE_LOADING_H', '1-1');
@@ -127,11 +128,11 @@ class CHttp
 		}
 	}
 
-	function rcevResponse($in_header_only = FALSE) {
+	function _rcevResponse($in_header_only = FALSE) {
 		$ret = CHTTP_RCEVRESPONSE_WOULDBLOCK;
 		switch ($this->_readyState) {
 		case CHTTP_READYSTATE_UNINITIALIZED :
-			$this->_DP('sendRequest is required before rcevResponse.');
+			$this->_DP('sendRequest is required before _rcevResponse.');
 			break;
 		case CHTTP_READYSTATE_LOADING_H :
 		case CHTTP_READYSTATE_LOADING_B :
@@ -179,11 +180,11 @@ class CHttp
 		return $ret;
 	}
 
-	function rcevResponseAll($in_header_only = FALSE, $in_timeout = 5) {
+	function _rcevResponseBlocking($in_header_only, $in_timeout) {
 		// $in_timeout : if timeout, socket will be closed.
 		$start = time();
 		while (TRUE) {
-			switch ($this->rcevResponse($in_header_only)) {
+			switch ($this->_rcevResponse($in_header_only)) {
 			case CHTTP_RCEVRESPONSE_WOULDBLOCK :
 				break;
 			case CHTTP_RCEVRESPONSE_IOSLEEP :
@@ -193,7 +194,7 @@ class CHttp
 			case CHTTP_RCEVRESPONSE_DONE :
 				break 2;
 			default :
-				$this->_DP('invalid return from rcevResponse.');
+				$this->_DP('invalid return from _rcevResponse.');
 				break;
 			}
 			if ($in_timeout && (time() - $start > $in_timeout)) {
@@ -203,12 +204,12 @@ class CHttp
 		}
 	}
 
-	function GET($in_header_only = FALSE) {
+	function GET($in_header_only = FALSE, $in_timeout = CHTTP_SOCKET_ABORT_TIMEOUT) {
 		$this->sendRequest('GET');
-		$this->rcevResponseAll($in_header_only);
+		$this->_rcevResponseBlocking($in_header_only, $in_timeout);
 	}
 
-	function POST($in_postdata, $in_header_only = FALSE) {
+	function POST($in_postdata, $in_header_only = FALSE, $in_timeout = CHTTP_SOCKET_ABORT_TIMEOUT) {
 		if (is_array($in_postdata)) {
 			$this->setHeader('Content-Type', 'application/x-www-form-urlencoded');
 			$body = util_array2query($in_postdata);
@@ -216,7 +217,7 @@ class CHttp
 			$body = $in_postdata;
 		}
 		$this->sendRequest('POST', $body);
-		$this->rcevResponseAll($in_header_only);
+		$this->_rcevResponseBlocking($in_header_only, $in_timeout);
 	}
 
 	function setAuthHeader($in_user, $in_pass) {
@@ -359,9 +360,9 @@ class CHttp
 
 class CHttpRequestPool
 {
-	function CHttpRequestPool($in_timeout = 10) {
+	function CHttpRequestPool($in_timeout_all = 10) {
 		$this->_pool = array();
-		$this->_timeout = $in_timeout;
+		$this->_timeout_all = $in_timeout_all;
 	}
 
 	function attach($in_chttp) {
@@ -373,7 +374,7 @@ class CHttpRequestPool
 		if ($is_1by1) {
 			foreach ($this->_pool as $http) {
 				$http->sendRequest();
-				$http->rcevResponseAll();
+				$http->_rcevResponseBlocking(FALSE, CHTTP_SOCKET_ABORT_TIMEOUT);
 			}
 		} else {
 			$start = time();
@@ -384,7 +385,7 @@ class CHttpRequestPool
 				$finishd = 0;
 				$iosleep = TRUE;
 				foreach ($this->_pool as $http) {
-					switch ($http->rcevResponse()) {
+					switch ($http->_rcevResponse()) {
 					case CHTTP_RCEVRESPONSE_WOULDBLOCK :
 						$iosleep = FALSE;
 						break;
@@ -395,11 +396,11 @@ class CHttpRequestPool
 						$iosleep = FALSE;
 						break;
 					default :
-						$this->_DP('invalid return from rcevResponse.');
+						$this->_DP('invalid return from _rcevResponse.');
 						break;
 					}
 				}
-				if ((time() - $start) > $this->_timeout) {
+				if ((time() - $start) > $this->_timeout_all) {
 					foreach ($this->_pool as $http) {
 						$http->_fclose();
 					}
