@@ -5,7 +5,7 @@ require_once('chttp.php');
 define('EMULATOR_URI', "http://{$_SERVER['HTTP_HOST']}" . preg_replace('/\?.*/', '', $_SERVER['REQUEST_URI']));
 
 define('TESTMODE_302_2TIMES', 'redirection_2times');
-define('TESTMODE_302_ONCE', 'redirection_once');
+define('TESTMODE_302_COOKIE', 'redirection_cookie');
 define('TESTMODE_TYPE', 'content_type');
 define('TESTMODE_INDEX', 'index');
 define('TESTMODE_TABLE', 'table');
@@ -18,12 +18,16 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	$history = array();
 	do {
 		if (strpos($next_dst, 'http://') === FALSE) {
-			array_push($history, 'unknown-dst');
+			array_push($history, "not target : {$next_dst}");
 			break;
 		}
 		$http = new CHttp($next_dst);
 		$http->GET(TRUE);
 		$next_dst = $http->getResponseHeader('Location');
+		$cookie = $http->getResponseHeader('Set-Cookie');
+		if ($cookie) {
+			array_push($history, 'received cookie !!');
+		}
 		if ($next_dst) {
 			array_push($history, $next_dst);
 		} else {
@@ -52,13 +56,14 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 			http://host/parh/file?test=TESTMODE_INDEX
 			http://host/parh/file?test=TESTMODE_TABLE
 	*/
-	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_ONCE, TESTMODE_TYPE);
+	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_COOKIE, TESTMODE_TYPE);
 	switch ($_GET['test']) {
 	case TESTMODE_302_2TIMES :
-		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_ONCE);
+		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_COOKIE);
 		break;
-	case TESTMODE_302_ONCE :
+	case TESTMODE_302_COOKIE :
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_TYPE);
+		setcookie('TestCookie', 'test');
 		break;
 	case TESTMODE_TYPE :
 		header('Content-Type: application/x-emulator-test');
@@ -76,7 +81,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	default :
 		print "<html><head></head>\n<body>\n<table>\n";
 		foreach ($tests as $test) {
-			print "<tr><td>" . EMULATOR_URI ."?test={$test}</td><td></td></tr>\n";
+			print "<tr><td>" . EMULATOR_URI ."?test={$test}</td><td>textContent</td><td></td></tr>\n";
 		}
 		print "</table>\n<script src='" . EMULATOR_URI . "'></script>\n</body>\n</html>\n";
 		break;
@@ -88,17 +93,32 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 
 		[before]
 			<table>
-			<tr><td> URL1 </td><td></td><tr>
-			<tr><td> URL2 </td><td></td><tr>
+			<tr><td> URL1 </td><td> TEXT1 </td><td></td><tr>
+			<tr><td> URL2 </td><td> TEXT2 </td><td></td><tr>
 			...
 
 		[after]
 			<table>
-			<tr><td> URL1 </td><td> RESULT1 </td><tr>
-			<tr><td> URL2 </td><td> RESULT2 </td><tr>
+			<tr><td> URL1 </td><td> TEXT1 </td><td> RESULT1 </td><tr>
+			<tr><td> URL2 </td><td> TEXT2 </td><td> RESULT2 </td><tr>
 			...
 	*/
 	header('Content-Type: text/javascript');
+	$gCSS = <<<EOCSS
+TABLE {
+	width: 100%;
+	border-collapse: collapse;
+}
+TD {
+	padding: 3px;
+	border: solid 1px gray;
+	word-break: break-all;
+}
+HR {
+	border: dotted 1px #dddddd;
+}
+EOCSS;
+	$gCSS = preg_replace('/[\r\n\t]+/', ' ', $gCSS);
 }
 
 ?>
@@ -110,6 +130,10 @@ function emulateRequest(in_url, in_callback)
 	document.body.appendChild(s);
 }
 
+var COL_URL = 0;
+var COL_TEXT = 1;
+var COL_RESULT = 2;
+
 var gURLStock = {
 	_current : 0,
 	_rows : document.getElementsByTagName('TABLE').item(0).rows,
@@ -120,17 +144,17 @@ var gURLStock = {
 		this._rows[this._current].cells.item(in_col).innerHTML = in_value;
 	},
 	currentURL : function() {
-		return this._get(0);
+		return this._get(COL_URL);
 	},
 	handleJSON : function(in_json) {
-		this._set(1, in_json.join('<hr />'));
+		this._set(COL_RESULT, in_json.join('<hr />'));
 		this._current++;
 		if (this._current < this._rows.length) {
 			emulateRequest(this.currentURL(), 'gURLStock.handleJSON');
 		} else {
 			var style = document.createElement('STYLE');
 			style.type = 'text/css';
-			style.textContent = 'TABLE, TD {border-collapse: collapse; border: solid 1px gray; padding: 3px;} HR {border: dotted 1px #dddddd;}';
+			style.textContent = "<?php print $gCSS; ?>";
 			document.head.appendChild(style);
 		}
 	},
