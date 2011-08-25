@@ -695,21 +695,25 @@ function __unittest__CHttp($in_servermode = NULL)
 		// (9) safe API
 		$prof->rec();
 		$http = new CHttp($url);
+		$r = $http->getStatusLine();
+		if (!is_array($r)) {
+			$http->_DP('test (9-1) failed.');
+		}
 		$r = $http->getResponseHeader('hoge');
 		if ($r !== NULL) {
-			$http->_DP('test (9-1) failed.');
+			$http->_DP('test (9-2) failed.');
 		}
 		$r = $http->getResponseHeaders(TRUE);
 		if (!is_array($r)) {
-			$http->_DP('test (9-2) failed.');
+			$http->_DP('test (9-3) failed.');
 		}
 		$r = $http->getResponseHeaders(FALSE);
 		if (!is_array($r)) {
-			$http->_DP('test (9-3) failed.');
+			$http->_DP('test (9-4) failed.');
 		}
 		$r = $http->getBody();
 		if ($r !== '') {
-			$http->_DP('test (9-4) failed.');
+			$http->_DP('test (9-5) failed.');
 		}
 		$prof->rec();
 		$prof->showScore();
