@@ -22,7 +22,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	$history = array();
 	$cnt = MAX_REDIRECT;
 	do {
-		if (strpos($next_dst, 'http://') === FALSE) {
+		if (strpos($next_dst, 'http://') !== 0) {
 			array_push($history, "not target : {$next_dst}");
 			break;
 		}
@@ -122,16 +122,18 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	header('Content-Type: text/javascript');
 	$gCSS = <<<EOCSS
 TABLE {
-	width: 100%;
+	width: 99%;
 	border-collapse: collapse;
 }
 TD {
+	width: 33%;
 	padding: 3px;
 	border: solid 1px gray;
 	word-break: break-all;
+	word-wrap: break-word;
 }
 HR {
-	border: dotted 1px #dddddd;
+	border: dotted 1px #cccccc;
 }
 EOCSS;
 	$gCSS = preg_replace('/[\r\n\t]+/', ' ', $gCSS);
@@ -159,13 +161,18 @@ var gURLStock = {
 	_set : function(in_col, in_value) {
 		this._rows[this._current].cells.item(in_col).innerHTML = in_value;
 	},
+	_setCurrentColor : function(in_color) {
+		this._rows[this._current].style.backgroundColor = in_color;
+	},
 	currentURL : function() {
 		return this._get(COL_URL);
 	},
 	handleJSON : function(in_json) {
+		this._setCurrentColor('#eeeeee');
 		this._set(COL_RESULT, in_json.join('<hr />'));
 		this._current++;
 		if (this._current < this._rows.length) {
+			this._setCurrentColor('#ffff99');
 			emulateRequest(this.currentURL(), 'gURLStock.handleJSON');
 		} else {
 			var style = document.createElement('STYLE');
