@@ -3,9 +3,13 @@
 require_once('chttp.php');
 
 define('EMULATOR_URI', "http://{$_SERVER['HTTP_HOST']}" . preg_replace('/\?.*/', '', $_SERVER['REQUEST_URI']));
+define('MAX_REDIRECT', 5);
+define('TIMEOUT', 5);
 
 define('TESTMODE_302_2TIMES', 'redirection_2times');
 define('TESTMODE_302_COOKIE', 'redirection_cookie');
+define('TESTMODE_302_LOOP', 'redirection_loop');
+define('TESTMODE_TIMEOUT', 'timeout');
 define('TESTMODE_TYPE', 'content_type');
 define('TESTMODE_INDEX', 'index');
 define('TESTMODE_TABLE', 'table');
@@ -16,13 +20,14 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	*/
 	$next_dst = $_GET['url'];
 	$history = array();
+	$cnt = MAX_REDIRECT;
 	do {
 		if (strpos($next_dst, 'http://') === FALSE) {
 			array_push($history, "not target : {$next_dst}");
 			break;
 		}
 		$http = new CHttp($next_dst);
-		$http->GET(TRUE);
+		$http->GET(TRUE, TIMEOUT);
 		$next_dst = $http->getResponseHeader('Location');
 		$cookie = $http->getResponseHeader('Set-Cookie');
 		if ($cookie) {
@@ -32,14 +37,18 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 			array_push($history, $next_dst);
 		} else {
 			$s = $http->getStatusLine();
-			if ($s[1] != 200) {
-				array_push($history, "{$s[1]} {$s[2]}");
+			if (count($s) == 3) {
+				if ($s[1] != 200) {
+					array_push($history, "{$s[1]} {$s[2]}");
+				} else {
+					$type = $http->getResponseHeader('Content-Type');
+					array_push($history, $type);
+				}
 			} else {
-				$type = $http->getResponseHeader('Content-Type');
-				array_push($history, $type);
+				array_push($history, 'invalid response (timeout etc)');
 			}
 		}
-	} while ($next_dst);
+	} while (($next_dst) && (--$cnt > 0));
 	$JSON = '["' . implode('","', $history) . '"]';
 	if (array_key_exists('debug', $_GET)) {
 		header('Content-Type: text/plain');
@@ -56,7 +65,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 			http://host/parh/file?test=TESTMODE_INDEX
 			http://host/parh/file?test=TESTMODE_TABLE
 	*/
-	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_COOKIE, TESTMODE_TYPE);
+	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_COOKIE, TESTMODE_302_LOOP, TESTMODE_TIMEOUT, TESTMODE_TYPE);
 	switch ($_GET['test']) {
 	case TESTMODE_302_2TIMES :
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_COOKIE);
@@ -65,9 +74,16 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_TYPE);
 		setcookie('TestCookie', 'test');
 		break;
+	case TESTMODE_302_LOOP :
+		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_LOOP);
+		break;
+	case TESTMODE_TIMEOUT :
+		sleep(TIMEOUT * 2);
+		print 'dummy';
+		break;
 	case TESTMODE_TYPE :
 		header('Content-Type: application/x-emulator-test');
-		print 'emulator-test';
+		print 'dummy';
 		break;
 	case TESTMODE_INDEX :
 		print "<html>\n<body>\n<ul>\n";
