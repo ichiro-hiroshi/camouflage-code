@@ -1,5 +1,9 @@
 <?php
 
+/*
+	HTTP Function
+*/
+
 function util_array2query($in_array)
 {
 	$params = array();
@@ -420,7 +424,164 @@ class CHttpRequestPool
 }
 
 /*
-	unittest
+	Cookie Function
+*/
+
+class CCookie
+{
+	function CCookie($in_string, $in_url = NULL) {
+		date_default_timezone_set('Asia/Tokyo');
+		$this->_data = NULL;
+		$this->_props = array();
+		foreach (explode(';', $in_string) as $piece) {
+			$piece = trim($piece);
+			$s = explode('=', $piece, 2);
+			if (count($s) != 2) {
+				// ignore 'secure', 'httponly'
+				continue;
+			}
+			if (!$this->_data) {
+				$this->_data = $piece;
+			} else {
+				$this->_props[$s[0]] = $s[1];
+			}
+		}
+		if ($in_url) {
+			$url = parse_url($in_url);
+			if (!$this->_getProp('domain')) {
+				$this->_setProp('domain', $url['host']);
+			}
+			if (!$this->_getProp('path')) {
+				$this->_setProp('path', $url['path']);
+			}
+		}
+	}
+
+	function _DP($in_string = NULL) {
+		header('Content-Type: text/plain');
+		if ($in_string) {
+			print $in_string;
+		} else {
+			print_r(debug_backtrace());
+		}
+		print "\n\n-----\n\n";
+		print_r($this);
+		exit;
+	}
+
+	function _prop($in_key, $in_val = NULL) {
+		foreach ($this->_props as $key => $val) {
+			if (strtoupper($key) == strtoupper($in_key)) {
+				if ($in_val) {
+					$this->_props[$key] = $in_val;
+				}
+				return $val;
+			}
+		}
+		if ($in_val) {
+			$this->_props[$in_key] = $in_val;
+		}
+		return NULL;
+	}
+
+	function _getProp($in_key) {
+		return $this->_prop($in_key);
+	}
+
+	function _setProp($in_key, $in_val) {
+		$this->_prop($in_key, $in_val);
+	}
+
+	function _canSend($in_dst_url) {
+		// expires
+		$expires = $this->_getProp('expires');
+		if ($expires) {
+			if (time() > strtotime($expires)) {
+				return FALSE;
+			}
+		}
+		// domain & path
+		$dst = parse_url($in_dst_url);
+		// domain : "$d_d" should be sub-domain.
+		$d_d = explode('.', $dst['host']);
+		$c_d = explode('.', $this->_getProp('domain'));
+		if (count($c_d) > count($d_d)) {
+			return FALSE;
+		}
+		do {
+			$d_sd = array_pop($d_d);
+			$c_sd = array_pop($c_d);
+			if ($d_sd != $c_sd) {
+				return FALSE;
+			}
+		} while ($d_sd && $c_sd);
+		// path : "$d_p" should be sub-path.
+		$d_p = explode('/', $dst['path']);
+		$c_p = explode('/', $this->_getProp('path'));
+		if (count($c_p) > count($d_p)) {
+			return FALSE;
+		}
+		do {
+			$d_sp = array_shift($d_p);
+			$c_sp = array_shift($c_p);
+			if ($d_sp != $c_sp) {
+				return FALSE;
+			}
+		} while ($d_sp && $c_sp);
+		return TRUE;
+	}
+
+	function compose($in_dst_url) {
+		if ($this->_canSend($in_dst_url)) {
+			return $this->_data;
+		} else {
+			return NULL;
+		}
+	}
+}
+
+class CHttpCookie extends CCookie
+{
+	function CHttpCookie($in_http) {
+		$u = $in_http->_parsedUrl;
+		$url = "{$u['scheme']}{$u['host']}{$u['path']}"; 
+		// sometimes, server may send some "Set-Cookie" headers !!
+		$str = $in_http->getResponseHeader('Set-Cookie');
+		parent::CCookie($str, $url);
+	}
+}
+
+class CCookiePool
+{
+	function CCookiePool() {
+		$this->_pool = array();
+	}
+
+	function addCookie($in_string, $in_url = NULL) {
+		$cookie = new CCookie($in_string, $in_url);
+		array_push($this->_pool, $cookie);
+	}
+
+	function addCHttpCookie($in_http) {
+		$cookie = new CHttpCookie($in_http);
+		array_push($this->_pool, $cookie);
+	}
+
+	function compose($in_dst_url) {
+		$pool = array();
+		foreach ($this->_pool as $cookie) {
+			if ($cookie->_canSend($in_url)) {
+				array_push($pool, $cookie->_data);
+			} else {
+				continue;
+			}
+		}
+		return implode('; ', $pool);
+	}
+}
+
+/*
+	Unit Test
 */
 
 //return;
