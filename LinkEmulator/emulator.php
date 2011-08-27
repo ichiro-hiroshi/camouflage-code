@@ -31,7 +31,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		$next_dst = $http->getResponseHeader('Location');
 		$cookie = $http->getResponseHeader('Set-Cookie');
 		if ($cookie) {
-			array_push($history, 'received cookie !!');
+			array_push($history, "received cookie !! : {$cookie}");
 		}
 		if ($next_dst) {
 			array_push($history, $next_dst);
@@ -72,7 +72,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		break;
 	case TESTMODE_302_COOKIE :
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_TYPE);
-		setcookie('TestCookie', 'test');
+		setcookie('TestCookie', 'test', time(), '/', 'localhost', TRUE, TRUE);
 		break;
 	case TESTMODE_302_LOOP :
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_LOOP);
