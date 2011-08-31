@@ -12,6 +12,27 @@ function util_array2query($in_array)
 	return implode('&', $params);
 }
 
+function util_parse_url($in_url)
+{
+	$res = parse_url($in_url);
+	if (!array_key_exists('path', $res)) {
+		$res['path'] = '/';
+	}
+	return $res;
+}
+
+function util_dp($in_obj, $in_string = NULL) {
+	header('Content-Type: text/plain');
+	if (is_null($in_string)) {
+		print_r(debug_backtrace());
+	} else {
+		print $in_string;
+	}
+	print "\n\n-----\n\n";
+	print_r($in_obj);
+	exit;
+}
+
 define('CHTTP_SOCKET_ERROR_TIMEOUT', 20);
 define('CHTTP_SOCKET_ABORT_TIMEOUT', 5);
 
@@ -33,10 +54,7 @@ class CHttp
 {
 	function CHttp($in_url, $in_proxy = NULL) {
 		// $in_proxy : "hostname" or "hostname:port"
-		$this->_parsedUrl = parse_url($in_url);
-		if (!array_key_exists('path', $this->_parsedUrl)) {
-			$this->_parsedUrl['path'] = '/';
-		}
+		$this->_parsedUrl = util_parse_url($in_url);
 		if ($in_proxy) {
 			$pos = strpos($in_proxy, ':');
 			if ($pos === FALSE) {
@@ -63,15 +81,7 @@ class CHttp
 	}
 
 	function _DP($in_string = NULL) {
-		header('Content-Type: text/plain');
-		if ($in_string) {
-			print $in_string;
-		} else {
-			print_r(debug_backtrace());
-		}
-		print "\n\n-----\n\n";
-		print_r($this);
-		exit;
+		util_dp($this, $in_string);
 	}
 
 	function sendRequest($in_method = NULL, $in_body = NULL) {
@@ -427,46 +437,52 @@ class CHttpRequestPool
 	Cookie Function
 */
 
+date_default_timezone_set('Asia/Tokyo');
+
 class CCookie
 {
 	function CCookie($in_string, $in_url = NULL) {
-		date_default_timezone_set('Asia/Tokyo');
+		/*
+			$in_url :
+			- http://aaa/bbb/ccc/ ... "ccc" means path
+			- http://aaa/bbb/ccc  ... "ccc" means file
+		*/
 		$this->_data = NULL;
 		$this->_props = array();
 		foreach (explode(';', $in_string) as $piece) {
 			$piece = trim($piece);
 			$s = explode('=', $piece, 2);
-			if (count($s) != 2) {
-				// ignore 'secure', 'httponly'
-				continue;
-			}
-			if (!$this->_data) {
-				$this->_data = $piece;
+			if (count($s) == 2) {
+				if (!$this->_data) {
+					$this->_data = $piece;
+				} else {
+					$this->_props[$s[0]] = $s[1];
+				}
 			} else {
-				$this->_props[$s[0]] = $s[1];
+				$this->_props[$piece] = TRUE;
 			}
 		}
+		$domain = $this->_getProp('domain');
+		if ($domain) {
+			$this->_setNormalizedDomain($domain);
+		}
+		$path = $this->_getProp('path');
+		if ($path) {
+			$this->_setNormalizedPath($path, FALSE);
+		}
 		if ($in_url) {
-			$url = parse_url($in_url);
-			if (!$this->_getProp('domain')) {
-				$this->_setProp('domain', $url['host']);
+			$url = util_parse_url($in_url);
+			if (!$domain) {
+				$this->_setNormalizedDomain($url['host']);
 			}
-			if (!$this->_getProp('path')) {
-				$this->_setProp('path', $url['path']);
+			if (!$path) {
+				$this->_setNormalizedPath($url['path'], TRUE);
 			}
 		}
 	}
 
 	function _DP($in_string = NULL) {
-		header('Content-Type: text/plain');
-		if ($in_string) {
-			print $in_string;
-		} else {
-			print_r(debug_backtrace());
-		}
-		print "\n\n-----\n\n";
-		print_r($this);
-		exit;
+		util_dp($this, $in_string);
 	}
 
 	function _prop($in_key, $in_val = NULL) {
@@ -492,6 +508,32 @@ class CCookie
 		$this->_prop($in_key, $in_val);
 	}
 
+	function _setNormalizedDomain($in_domain) {
+		if (substr($in_domain, 0, 1) == '.') {
+			// first char is "."
+			$this->_setProp('domain', $in_domain);
+		} else {
+			// add "."
+			$this->_setProp('domain', ".{$in_domain}");
+		}
+	}
+
+	function _setNormalizedPath($in_path, $in_assume_file) {
+		$pos = strrpos($in_path, '/');
+		if ($pos == (strlen($in_path) - 1)) {
+			// last char is "/"
+			$this->_setProp('path', $in_path);
+		} else {
+			if ($in_assume_file) {
+				// remove "file"
+				$this->_setProp('path', substr($in_path, 0, ($pos + 1)));
+			} else {
+				// add "/"
+				$this->_setProp('path', "{$in_path}/");
+			}
+		}
+	}
+
 	function _canSend($in_dst_url) {
 		// expires
 		$expires = $this->_getProp('expires');
@@ -501,33 +543,23 @@ class CCookie
 			}
 		}
 		// domain & path
-		$dst = parse_url($in_dst_url);
+		$dst = util_parse_url($in_dst_url);
 		// domain : "$d_d" should be sub-domain.
-		$d_d = explode('.', $dst['host']);
-		$c_d = explode('.', $this->_getProp('domain'));
-		if (count($c_d) > count($d_d)) {
-			return FALSE;
-		}
-		do {
-			$d_sd = array_pop($d_d);
-			$c_sd = array_pop($c_d);
-			if ($d_sd != $c_sd) {
+		if (strpos(strrev($dst['host']), strrev($this->_getProp('domain'))) === 0) {
+			// "$d_d" is sub-domain, since domain in CCookie has been nomalized.
+		} else {
+			if (".{$dst['host']}" != $this->_getProp('domain')) {
 				return FALSE;
 			}
-		} while ($d_sd && $c_sd);
+		}
 		// path : "$d_p" should be sub-path.
-		$d_p = explode('/', $dst['path']);
-		$c_p = explode('/', $this->_getProp('path'));
-		if (count($c_p) > count($d_p)) {
-			return FALSE;
-		}
-		do {
-			$d_sp = array_shift($d_p);
-			$c_sp = array_shift($c_p);
-			if ($d_sp != $c_sp) {
+		if (strpos($dst['path'], $this->_getProp('path')) === 0) {
+			// "$d_p" is sub-path, since path in CCookie has been nomalized.
+		} else {
+			if ("{$dst['path']}/" != $this->_getProp('path')) {
 				return FALSE;
 			}
-		} while ($d_sp && $c_sp);
+		}
 		return TRUE;
 	}
 
@@ -544,8 +576,8 @@ class CHttpCookie extends CCookie
 {
 	function CHttpCookie($in_http) {
 		$u = $in_http->_parsedUrl;
-		$url = "{$u['scheme']}{$u['host']}{$u['path']}"; 
-		// sometimes, server may send some "Set-Cookie" headers !!
+		$url = "{$u['scheme']}://{$u['host']}{$u['path']}"; 
+		// sometimes, server may send some "Set-Cookie" headers !! e.g. Google
 		$str = $in_http->getResponseHeader('Set-Cookie');
 		parent::CCookie($str, $url);
 	}
@@ -555,6 +587,10 @@ class CCookiePool
 {
 	function CCookiePool() {
 		$this->_pool = array();
+	}
+
+	function _DP($in_string = NULL) {
+		util_dp($this, $in_string);
 	}
 
 	function addCookie($in_string, $in_url = NULL) {
@@ -570,7 +606,7 @@ class CCookiePool
 	function compose($in_dst_url) {
 		$pool = array();
 		foreach ($this->_pool as $cookie) {
-			if ($cookie->_canSend($in_url)) {
+			if ($cookie->_canSend($in_dst_url)) {
 				array_push($pool, $cookie->_data);
 			} else {
 				continue;
@@ -607,6 +643,7 @@ define('UT_SERVERMODE_DELAYED', 6);
 define('UT_SERVERMODE_CHUNKEDBODY', 7);
 define('UT_SERVERMODE_GZIP', 8);
 define('UT_SERVERMODE_DUPHEADER', 9);
+define('UT_SERVERMODE_SETCOOKIE', 10);
 
 define('UT_DELAYEDSEC', 1);
 
@@ -725,6 +762,9 @@ function __unittest__CHttp($in_servermode = NULL)
 			header('X-DUP: 1st');
 			header('x-dup: 2nd', FALSE);
 			break;
+		case UT_SERVERMODE_SETCOOKIE :
+			setcookie('n', 'v', time() + 3600, '/');
+			break;
 		default :
 			break;
 		}
@@ -735,16 +775,146 @@ function __unittest__CHttp($in_servermode = NULL)
 		}
 	} else {
 		$prof = new CProf();
+		// (Cookie-1)
 		$prof->rec();
-		// (1) simple GET method
+		$d_paths = array(
+			'/' => FALSE,
+			'/aaa' => FALSE,
+			'/aaa/' => FALSE,
+			'/aaa/bb' => FALSE,
+			'/aaa/bbb' => TRUE,
+			'/aaa/bbbb' => FALSE,
+			'/aaa/bb/' => FALSE,
+			'/aaa/bbb/' => TRUE,
+			'/aaa/bbbb/' => FALSE,
+			'/aaa/bb/ccc' => FALSE,
+			'/aaa/bbb/ccc' => TRUE,
+			'/aaa/bbbb/ccc' => FALSE,
+			'/aaa/bb/ccc/' => FALSE,
+			'/aaa/bbb/ccc/' => TRUE,
+			'/aaa/bbbb/ccc/' => FALSE
+		);
+		$template = 'n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=_REPLACE_ME_; domain=xxx; secure; httponly';
+		$c_paths = array('/aaa/bbb/', '/aaa/bbb');
+		foreach ($c_paths as $c_path) {
+			$cookie = new CCookie(str_replace('_REPLACE_ME_', $c_path, $template));
+			foreach ($d_paths as $d_path => $expected) {
+				if ($cookie->compose("http://xxx{$d_path}") == 'n=v') {
+					$composed = TRUE;
+				} else {
+					$composed = FALSE;
+				}
+				if ($composed != $expected) {
+					$hint = $expected ? 'sent' : 'ignored';
+					$cookie->_DP("test (Cookie-1) failed. (from '{$c_path}' to '{$d_path}' should be {$hint})");
+				}
+			}
+		}
+		// (Cookie-2)
+		$prof->rec();
+		$template = 'n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/; domain=xxx; secure; httponly';
+		$cookie = new CCookie($template);
+		if ($cookie->compose("http://xxx") != 'n=v') {
+			$cookie->_DP('test (Cookie-2.1) failed.');
+		}
+		if ($cookie->compose("http://xxx/") != 'n=v') {
+			$cookie->_DP('test (Cookie-2.2) failed.');
+		}
+		if ($cookie->compose("http://xxx/aaa") != 'n=v') {
+			$cookie->_DP('test (Cookie-2.3) failed.');
+		}
+		if ($cookie->compose("http://xxx/aaa/") != 'n=v') {
+			$cookie->_DP('test (Cookie-2.4) failed.');
+		}
+		// (Cookie-3)
+		$prof->rec();
+		$d_hosts = array(
+			'aaa.com' => FALSE,
+			'bbb.aaa.com' => TRUE,
+			'ccc.aaa.com' => FALSE,
+			'ddd.bbb.aaa.com' => TRUE
+		);
+		$template = 'n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/; domain=_REPLACE_ME_; secure; httponly';
+		$c_hosts = array('bbb.aaa.com', '.bbb.aaa.com');
+		foreach ($c_hosts as $c_host) {
+			$cookie = new CCookie(str_replace('_REPLACE_ME_', $c_host, $template));
+			foreach ($d_hosts as $d_host => $expected) {
+				if ($cookie->compose("http://{$d_host}/") == 'n=v') {
+					$composed = TRUE;
+				} else {
+					$composed = FALSE;
+				}
+				if ($composed != $expected) {
+					$hint = $expected ? 'sent' : 'ignored';
+					$cookie->_DP("test (Cookie-1) failed. (from '{$c_host}' to '{$d_host}' should be {$hint})");
+				}
+			}
+		}
+		// (Cookie-4)
+		$prof->rec();
+		$cookie = new CCookie('n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/; domain=xxx; secure; httponly');
+		if ($cookie->compose('http://xxx/') != 'n=v') {
+			$cookie->_DP('test (Cookie-4.1) failed.');
+		}
+		$cookie = new CCookie('n=v; expires=Thu, 01-Jan-2010 01:00:00 GMT; path=/; domain=xxx; secure; httponly');
+		if ($cookie->compose('http://xxx/') == 'n=v') {
+			$cookie->_DP('test (Cookie-4.2) failed.');
+		}
+		$cookie = new CCookie('n=v; expires=XXXXXXXXXXXXXXXXXXXXXXXXX GMT; path=/; domain=xxx; secure; httponly');
+		if ($cookie->compose('http://xxx/') == 'n=v') {
+			$cookie->_DP('test (Cookie-4.3) failed.');
+		}
+		// (Cookie-5)
+		$prof->rec();
+		$url = ut_servermode_url(UT_SERVERMODE_SETCOOKIE);
+		$http = new CHttp($url);
+		$http->GET();
+		$cookie = new CHttpCookie($http);
+		if ($cookie->compose("http://sub-domain.{$_SERVER['HTTP_HOST']}") != 'n=v') {
+			$cookie->_DP('test (Cookie-5.1) failed.');
+		}
+		$url = ut_servermode_url(UT_SERVERMODE_GET);
+		$http = new CHttp($url);
+		$http->GET();
+		$cookie = new CHttpCookie($http);
+		if ($cookie->compose("http://{$_SERVER['HTTP_HOST']}/")) {
+			$cookie->_DP('test (Cookie-5.2) failed.');
+		}
+		// (Cookie-6)
+		$prof->rec();
+		$pool = new CCookiePool();
+		$raws = array(
+			'n1=v1; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=x',
+			'n2=v2; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/a;     domain=x',
+			'n3=v3; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/a/;    domain=x',
+			'n4=v4; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/a/b;   domain=x',
+			'n5=v5; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/a/b/;  domain=x',
+			'n6=v6; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/a/b/c; domain=x',
+			'n7=v7; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=.x',
+			'n8=v8; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=y.x',
+			'n9=v9; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=.y.x',
+			'n0=v0; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=z.y.x',
+		);
+		foreach ($raws as $raw) {
+			$pool->addCookie($raw);
+		}
+		$url = ut_servermode_url(UT_SERVERMODE_SETCOOKIE);
+		$http = new CHttp($url);
+		$http->GET();
+		$pool->addCHttpCookie($http);
+		if ($pool->compose('http://y.x/a/b') != 'n1=v1; n2=v2; n3=v3; n4=v4; n5=v5; n7=v7; n8=v8; n9=v9') {
+			$pool->_DP('test (Cookie-6) failed.');
+		}
+		// (HTTP-1) simple GET method
+		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_GET);
 		$http = new CHttp($url);
 		$http->GET();
 		$r = $http->getResponseHeaders();
 		if ($r['X-CHttp-Test'] != UT_SERVERMODE_GET) {
-			$http->_DP('test (1) failed.');
+			$http->_DP('test (HTTP-1) failed.');
 		}
-		// (2) simple POST method
+		// (HTTP-2) simple POST method
 		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_POST);
 		$http = new CHttp($url);
@@ -758,13 +928,13 @@ function __unittest__CHttp($in_servermode = NULL)
 		foreach ($post_params as $key => $val) {
 			if (array_key_exists("X-{$key}", $r)) {
 				if ($r["X-{$key}"] != $val) {
-					$http->_DP("test (2) failed. [value : {$val}]");
+					$http->_DP("test (HTTP-2) failed. [value : {$val}]");
 				}
 			} else {
-				$http->_DP("test (2) failed. [key : {$key}]");
+				$http->_DP("test (HTTP-2) failed. [key : {$key}]");
 			}
 		}
-		// (3) Basic Authorization
+		// (HTTP-3) Basic Authorization
 		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_AUTH);
 		$http = new CHttp($url);
@@ -772,12 +942,12 @@ function __unittest__CHttp($in_servermode = NULL)
 		$http->GET();
 		$r = $http->getResponseHeaders();
 		if ($r['X-UT_USER'] != UT_USER) {
-			$http->_DP('test (3) failed. (UT_USER)');
+			$http->_DP('test (HTTP-3) failed. (UT_USER)');
 		}
 		if ($r['X-UT_PASS'] != UT_PASS) {
-			$http->_DP('test (3) failed. (UT_PASS)');
+			$http->_DP('test (HTTP-3) failed. (UT_PASS)');
 		}
-		// (4) HTTP Redirection
+		// (HTTP-4) HTTP Redirection
 		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_3xxFROM);
 		$http = new CHttp($url);
@@ -786,15 +956,15 @@ function __unittest__CHttp($in_servermode = NULL)
 
 		$s = $http->getStatusLine();
 		if ($s[1] != 302) {
-			$http->_DP("test (4) failed. (status code : {$s[1]})");
+			$http->_DP("test (HTTP-4) failed. (status code : {$s[1]})");
 		}
 		$http = new CHttp($r['Location']);
 		$http->GET();
 		$r = $http->getResponseHeaders();
 		if ($r['X-CHttp-Test'] != UT_SERVERMODE_3xxTO) {
-			$http->_DP('test (4) failed.');
+			$http->_DP('test (HTTP-4) failed.');
 		}
-		// (5) 50 Requests at the same time
+		// (HTTP-5) 50 Requests at the same time
 		$prof->rec();
 		$request = 50;
 		$start = time();
@@ -807,14 +977,14 @@ function __unittest__CHttp($in_servermode = NULL)
 		for ($i = 0; $i < $request; $i++) {
 			$r = $responses[$i]->getResponseHeaders();
 			if ($r['X-CHttp-Test'] != UT_SERVERMODE_DELAYED) {
-				$responses[$i]->_DP("test (5) failed. ({$i})");
+				$responses[$i]->_DP("test (HTTP-5) failed. ({$i})");
 			}
 		}
 		if ((time() - $start) > UT_DELAYEDSEC * 5) {
-			print 'test (5) failed. time is over.';
+			print 'test (HTTP-5) failed. time is over.';
 			exit;
 		}
-		// (6) Transfer-Encoding: chunked
+		// (HTTP-6) Transfer-Encoding: chunked
 		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_CHUNKEDBODY);
 		$http = new CHttp($url);
@@ -825,9 +995,9 @@ function __unittest__CHttp($in_servermode = NULL)
 			$body_sent .= UT_CHUNK_ELEM;
 		}
 		if (strpos($body_received, $body_sent) !== 0) {
-			$http->_DP('test (6) failed.');
+			$http->_DP('test (HTTP-6) failed.');
 		}
-		// (7) Content-Encoding: gzip
+		// (HTTP-7) Content-Encoding: gzip
 /*
 		// debugging now !!
 		$prof->rec();
@@ -837,44 +1007,44 @@ function __unittest__CHttp($in_servermode = NULL)
 		$http->GET();
 		exit;
 */
-		// (8) duplicate
+		// (HTTP-8) duplicate
 		$prof->rec();
 		$url = ut_servermode_url(UT_SERVERMODE_DUPHEADER);
 		$http = new CHttp($url);
 		$http->GET();
 		$dup = $http->getResponseHeader('X-Dup');
 		if (!$dup || ($dup != '1st')) {
-			$http->_DP('test (8) failed.');
+			$http->_DP('test (HTTP-8) failed.');
 		}
 		$headers = $http->getResponseHeaders(FALSE);
 		if (!in_array('X-DUP: 1st', $headers)) {
-			$http->_DP('test (8) failed. (1st is not found)');
+			$http->_DP('test (HTTP-8) failed. (1st is not found)');
 		}
 		if (!in_array('x-dup: 2nd', $headers)) {
-			$http->_DP('test (8) failed. (2st is not found)');
+			$http->_DP('test (HTTP-8) failed. (2st is not found)');
 		}
-		// (9) safe API
+		// (HTTP-9) safe API
 		$prof->rec();
 		$http = new CHttp($url);
 		$r = $http->getStatusLine();
 		if (!is_array($r)) {
-			$http->_DP('test (9-1) failed.');
+			$http->_DP('test (HTTP-9-1) failed.');
 		}
 		$r = $http->getResponseHeader('hoge');
 		if ($r !== NULL) {
-			$http->_DP('test (9-2) failed.');
+			$http->_DP('test (HTTP-9-2) failed.');
 		}
 		$r = $http->getResponseHeaders(TRUE);
 		if (!is_array($r)) {
-			$http->_DP('test (9-3) failed.');
+			$http->_DP('test (HTTP-9-3) failed.');
 		}
 		$r = $http->getResponseHeaders(FALSE);
 		if (!is_array($r)) {
-			$http->_DP('test (9-4) failed.');
+			$http->_DP('test (HTTP-9-4) failed.');
 		}
 		$r = $http->getBody();
 		if ($r !== '') {
-			$http->_DP('test (9-5) failed.');
+			$http->_DP('test (HTTP-9-5) failed.');
 		}
 		$prof->rec();
 		$prof->showScore();
