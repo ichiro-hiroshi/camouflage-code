@@ -546,7 +546,7 @@ class CCookie
 		$dst = util_parse_url($in_dst_url);
 		// domain : "$d_d" should be sub-domain.
 		if (strpos(strrev($dst['host']), strrev($this->_getProp('domain'))) === 0) {
-			// "$d_d" is sub-domain, since domain in CCookie has been nomalized.
+			// "$d_d" is sub-domain, since domain in CCookie has been alerady normalized.
 		} else {
 			if (".{$dst['host']}" != $this->_getProp('domain')) {
 				return FALSE;
@@ -554,7 +554,7 @@ class CCookie
 		}
 		// path : "$d_p" should be sub-path.
 		if (strpos($dst['path'], $this->_getProp('path')) === 0) {
-			// "$d_p" is sub-path, since path in CCookie has been nomalized.
+			// "$d_p" is sub-path, since path in CCookie has been alerady normalized.
 		} else {
 			if ("{$dst['path']}/" != $this->_getProp('path')) {
 				return FALSE;
