@@ -1051,17 +1051,6 @@ function __unittest__CHttp($in_servermode = NULL)
 	}
 }
 
-function __externaltest__CHttp($in_url)
-{
-	$http = new CHttp($in_url);
-	$http->GET();
-	$headers = $http->getResponseHeaders();
-	foreach ($headers as $key => $val) {
-		header("{$key}: {$val}");
-	}
-	print $http->getBody(TRUE);
-}
-
 define('CHTTP_SELF', substr(str_replace(__DIR__, '', __FILE__), 1));
 define('CHTTP_CALLER', substr($_SERVER['SCRIPT_NAME'], strrpos($_SERVER['SCRIPT_NAME'], '/') + 1));
 
@@ -1070,8 +1059,6 @@ if (UT_SERVERMODE) {
 } else {
 	if (CHTTP_SELF == CHTTP_CALLER) {
 		__unittest__CHttp();
-		//__externaltest__CHttp('http://tools.ietf.org/rfc/rfc2616.txt');
-		//__externaltest__CHttp('http://www.yahoo.co.jp/');
 	} else {
 		return;
 	}
