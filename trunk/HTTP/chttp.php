@@ -69,7 +69,7 @@ class CHttp
 			$this->_proxy = NULL;
 		}
 		$this->_readyState = CHTTP_READYSTATE_UNINITIALIZED;
-		$this->_socket = NULL;
+		$this->_handle = NULL;
 		$this->_headers = array();
 		$this->_setDefaultHeaders();
 		$this->_rawRequest = NULL;
@@ -78,10 +78,92 @@ class CHttp
 		$this->_statusLine = NULL;
 		$this->_responseHeaders = array();
 		$this->_method = 'GET';
+		$this->_cache = NULL;
+		$this->_cacheLife = 0;
 	}
 
 	function _DP($in_string = NULL) {
 		util_dp($this, $in_string);
+	}
+
+	function url() {
+		$u = $this->_parsedUrl;
+		$url = "{$u['scheme']}://{$u['host']}{$u['path']}";
+		if (array_key_exists('query', $u)) {
+			$url .= "?{$u['query']}";
+		}
+		return $url;
+	}
+
+	function initCache($in_cache_path, $in_cache_life) {
+		if (is_dir($in_cache_path)) {
+			$path = "{$in_cache_path}/" . md5($this->url());
+			$h = @fopen($path, 'w+');
+			if ($h) {
+				fclose($h);
+				unlink($path);
+				$this->_cache = $path;
+				$this->_cacheLife = $in_cache_life;
+				return TRUE;
+			}
+		}
+		// can not use cache
+		return FALSE;
+	}
+
+	function _cacheIsFresh() {
+		if ($this->_cache) {
+			if (file_exists($this->_cache) && (time() - filemtime($this->_cache) < $this->_cacheLife)) {
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+
+	function _saveCache() {
+		if ($this->_cache) {
+			$h = fopen($this->_cache, 'w+');
+			fwrite($h, $this->_rawResponse);
+			fclose($h);
+			clearstatcache();
+		}
+	}
+
+	function _streamOpen($in_host, $in_port) {
+		if ($this->_cacheIsFresh()) {
+			$this->_handle = fopen($this->_cache, 'r');
+		} else {
+			$this->_handle = @fsockopen($in_host, $in_port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
+			if (!$this->_handle) {
+				$this->_DP("{$errno}\n{$errstr}");
+			}
+			stream_set_blocking($this->_handle, FALSE);
+		}
+	}
+
+	function _streamPuts($in_data) {
+		if (!$this->_cacheIsFresh()) {
+			fputs($this->_handle, $in_data);
+		}
+	}
+
+	function _streamGets() {
+		return fgets($this->_handle);
+	}
+
+	function _streamEof() {
+		return feof($this->_handle);
+	}
+
+	function _streamClose() {
+		if ($this->_handle) {
+			fclose($this->_handle);
+			$this->_handle = NULL;
+			$this->_readyState = CHTTP_READYSTATE_LOADED;
+			if (!$this->_cacheIsFresh()) {
+				$this->_saveCache();
+			}
+		}
 	}
 
 	function sendRequest($in_method = NULL, $in_body = NULL) {
@@ -118,11 +200,7 @@ class CHttp
 			$this->_rawRequest = "{$this->_method} {$request_line} HTTP/1.1\r\n";
 		}
 		$host = str_replace('://localhost', '://127.0.0.1', $host);
-		$this->_socket = @fsockopen($host, $port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
-		if (!$this->_socket) {
-			$this->_DP("{$errno}\n{$errstr}");
-		}
-		stream_set_blocking($this->_socket, FALSE);
+		$this->_streamOpen($host, $port);
 		foreach ($this->_headers as $key => $val) {
 			$this->_rawRequest .= "{$key}: {$val}\r\n";
 		}
@@ -130,16 +208,8 @@ class CHttp
 		if ($in_body) {
 			$this->_rawRequest .= $in_body;
 		}
-		fputs($this->_socket, $this->_rawRequest);
+		$this->_streamPuts($this->_rawRequest);
 		$this->_readyState = CHTTP_READYSTATE_LOADING_H;
-	}
-
-	function _fclose() {
-		if ($this->_socket) {
-			fclose($this->_socket);
-			$this->_socket = NULL;
-			$this->_readyState = CHTTP_READYSTATE_LOADED;
-		}
 	}
 
 	function _rcevResponse($in_header_only = FALSE) {
@@ -150,11 +220,11 @@ class CHttp
 			break;
 		case CHTTP_READYSTATE_LOADING_H :
 		case CHTTP_READYSTATE_LOADING_B :
-			if (feof($this->_socket)) {
-				$this->_fclose();
+			if ($this->_streamEof()) {
+				$this->_streamClose();
 				$ret = CHTTP_RCEVRESPONSE_DONE;
 			} else {
-				$line = fgets($this->_socket);
+				$line = $this->_streamGets();
 				if (!$line) {
 					// no-data
 					$ret = CHTTP_RCEVRESPONSE_IOSLEEP;
@@ -175,7 +245,7 @@ class CHttp
 						// header --> entity body
 						$this->_bodyOffset = strlen($this->_rawResponse);
 						if ($in_header_only) {
-							$this->_fclose();
+							$this->_streamClose();
 							$ret = CHTTP_RCEVRESPONSE_DONE;
 						} else {
 							$this->_readyState = CHTTP_READYSTATE_LOADING_B;
@@ -212,7 +282,7 @@ class CHttp
 				break;
 			}
 			if ($in_timeout && (time() - $start > $in_timeout)) {
-				$this->_fclose();
+				$this->_streamClose();
 				break;
 			}
 		}
@@ -416,7 +486,7 @@ class CHttpRequestPool
 				}
 				if ((time() - $start) > $this->_timeout_all) {
 					foreach ($this->_pool as $http) {
-						$http->_fclose();
+						$http->_streamClose();
 					}
 					break;
 				}
@@ -426,6 +496,18 @@ class CHttpRequestPool
 				}
 			} while ($finishd != count($this->_pool));
 		}
+	}
+
+	function getFinishedRequest($in_url) {
+		// fragment must be removed in "$in_url".
+		for ($i = 0; $i < count($this->_pool); $i++) {
+			if ($in_url != $this->_pool[$i]->url()) {
+				continue;
+			} else {
+				return $this->_pool[$i];
+			}
+		}
+		return NULL;
 	}
 
 	function getFinishedRequests() {
@@ -970,7 +1052,7 @@ function __unittest__CHttp($in_servermode = NULL)
 		$start = time();
 		$pool = new CHttpRequestPool();
 		for ($i = 0; $i < $request; $i++) {
-			$pool->attach((new CHttp(ut_servermode_url(UT_SERVERMODE_DELAYED))));
+			$pool->attach((new CHttp(ut_servermode_url(UT_SERVERMODE_DELAYED, "i={$i}"))));
 		}
 		$pool->send(FALSE);
 		$responses = $pool->getFinishedRequests();
@@ -979,6 +1061,11 @@ function __unittest__CHttp($in_servermode = NULL)
 			if ($r['X-CHttp-Test'] != UT_SERVERMODE_DELAYED) {
 				$responses[$i]->_DP("test (HTTP-5) failed. ({$i})");
 			}
+		}
+		$test_url = ut_servermode_url(UT_SERVERMODE_DELAYED, "i=" . rand(0, ($request - 1)));
+		if ($pool->getFinishedRequest($test_url)->url() != $test_url) {
+			print 'test (HTTP-5) failed. getFinishedRequest API.';
+			exit;
 		}
 		if ((time() - $start) > UT_DELAYEDSEC * 5) {
 			print 'test (HTTP-5) failed. time is over.';
