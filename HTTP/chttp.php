@@ -95,23 +95,26 @@ class CHttp
 		return $url;
 	}
 
-	function initCache($in_cache_path, $in_cache_life) {
+	function useCache($in_cache_path, $in_cache_life) {
 		if (is_dir($in_cache_path)) {
 			$path = "{$in_cache_path}/" . md5($this->url());
-			$h = @fopen($path, 'w+');
-			if ($h) {
-				fclose($h);
-				unlink($path);
-				$this->_cache = $path;
-				$this->_cacheLife = $in_cache_life;
-				return TRUE;
+			if (!file_exists($path)) {
+				$h = @fopen($path, 'w+');
+				if ($h) {
+					fclose($h);
+					unlink($path);
+				} else {
+					return FALSE;
+				}
 			}
+			$this->_cache = $path;
+			$this->_cacheLife = $in_cache_life;
+			return TRUE;
 		}
-		// can not use cache
 		return FALSE;
 	}
 
-	function _cacheIsFresh() {
+	function _isFreshCache() {
 		if ($this->_cache) {
 			if (file_exists($this->_cache) && (time() - filemtime($this->_cache) < $this->_cacheLife)) {
 				return TRUE;
@@ -130,7 +133,7 @@ class CHttp
 	}
 
 	function _streamOpen($in_host, $in_port) {
-		if ($this->_cacheIsFresh()) {
+		if ($this->_isFreshCache()) {
 			$this->_handle = fopen($this->_cache, 'r');
 		} else {
 			$this->_handle = @fsockopen($in_host, $in_port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
@@ -142,7 +145,9 @@ class CHttp
 	}
 
 	function _streamPuts($in_data) {
-		if (!$this->_cacheIsFresh()) {
+		if ($this->_isFreshCache()) {
+			return;
+		} else {
 			fputs($this->_handle, $in_data);
 		}
 	}
@@ -160,7 +165,7 @@ class CHttp
 			fclose($this->_handle);
 			$this->_handle = NULL;
 			$this->_readyState = CHTTP_READYSTATE_LOADED;
-			if (!$this->_cacheIsFresh()) {
+			if (!$this->_isFreshCache()) {
 				$this->_saveCache();
 			}
 		}
@@ -444,12 +449,17 @@ class CHttp
 
 class CHttpRequestPool
 {
-	function CHttpRequestPool($in_timeout_all = 10) {
+	function CHttpRequestPool($in_cache_path = NULL, $in_cache_life = 0, $in_timeout_all = 10) {
 		$this->_pool = array();
+		$this->_cache_path = $in_cache_path;
+		$this->_cache_life = $in_cache_life;
 		$this->_timeout_all = $in_timeout_all;
 	}
 
 	function attach($in_chttp) {
+		if ($this->_cache_path) {
+			$in_chttp->useCache($this->_cache_path, $this->_cache_life);
+		}
 		array_push($this->_pool, $in_chttp);
 		return count($this->_pool);
 	}
@@ -726,6 +736,7 @@ define('UT_SERVERMODE_CHUNKEDBODY', 7);
 define('UT_SERVERMODE_GZIP', 8);
 define('UT_SERVERMODE_DUPHEADER', 9);
 define('UT_SERVERMODE_SETCOOKIE', 10);
+define('UT_SERVERMODE_RAND_RES', 11);
 
 define('UT_DELAYEDSEC', 1);
 
@@ -847,6 +858,9 @@ function __unittest__CHttp($in_servermode = NULL)
 		case UT_SERVERMODE_SETCOOKIE :
 			setcookie('n', 'v', time() + 3600, '/');
 			break;
+		case UT_SERVERMODE_RAND_RES :
+			$output_default_body = FALSE;
+			print rand();
 		default :
 			break;
 		}
@@ -857,8 +871,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		}
 	} else {
 		$prof = new CProf();
-		// (Cookie-1)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-1) path #1
+EOSYMBOL;
+		$prof->rec($symbol);
 		$d_paths = array(
 			'/' => FALSE,
 			'/aaa' => FALSE,
@@ -892,8 +908,10 @@ function __unittest__CHttp($in_servermode = NULL)
 				}
 			}
 		}
-		// (Cookie-2)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-2) path #2
+EOSYMBOL;
+		$prof->rec($symbol);
 		$template = 'n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/; domain=xxx; secure; httponly';
 		$cookie = new CCookie($template);
 		if ($cookie->compose("http://xxx") != 'n=v') {
@@ -908,8 +926,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($cookie->compose("http://xxx/aaa/") != 'n=v') {
 			$cookie->_DP('test (Cookie-2.4) failed.');
 		}
-		// (Cookie-3)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-3) domain
+EOSYMBOL;
+		$prof->rec($symbol);
 		$d_hosts = array(
 			'aaa.com' => FALSE,
 			'bbb.aaa.com' => TRUE,
@@ -932,8 +952,10 @@ function __unittest__CHttp($in_servermode = NULL)
 				}
 			}
 		}
-		// (Cookie-4)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-4) expires
+EOSYMBOL;
+		$prof->rec($symbol);
 		$cookie = new CCookie('n=v; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/; domain=xxx; secure; httponly');
 		if ($cookie->compose('http://xxx/') != 'n=v') {
 			$cookie->_DP('test (Cookie-4.1) failed.');
@@ -946,8 +968,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($cookie->compose('http://xxx/') == 'n=v') {
 			$cookie->_DP('test (Cookie-4.3) failed.');
 		}
-		// (Cookie-5)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-5) Cookie with HTTP
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_SETCOOKIE);
 		$http = new CHttp($url);
 		$http->GET();
@@ -962,8 +986,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($cookie->compose("http://{$_SERVER['HTTP_HOST']}/")) {
 			$cookie->_DP('test (Cookie-5.2) failed.');
 		}
-		// (Cookie-6)
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(Cookie-6) CCookiePool
+EOSYMBOL;
+		$prof->rec($symbol);
 		$pool = new CCookiePool();
 		$raws = array(
 			'n1=v1; expires=Thu, 01-Jan-2020 01:00:00 GMT; path=/;      domain=x',
@@ -987,8 +1013,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($pool->compose('http://y.x/a/b') != 'n1=v1; n2=v2; n3=v3; n4=v4; n5=v5; n7=v7; n8=v8; n9=v9') {
 			$pool->_DP('test (Cookie-6) failed.');
 		}
-		// (HTTP-1) simple GET method
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-1) simple GET method
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_GET);
 		$http = new CHttp($url);
 		$http->GET();
@@ -996,8 +1024,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($r['X-CHttp-Test'] != UT_SERVERMODE_GET) {
 			$http->_DP('test (HTTP-1) failed.');
 		}
-		// (HTTP-2) simple POST method
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-2) simple POST method
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_POST);
 		$http = new CHttp($url);
 		$post_params = array(
@@ -1016,8 +1046,10 @@ function __unittest__CHttp($in_servermode = NULL)
 				$http->_DP("test (HTTP-2) failed. [key : {$key}]");
 			}
 		}
-		// (HTTP-3) Basic Authorization
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-3) Basic Authorization
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_AUTH);
 		$http = new CHttp($url);
 		$http->setAuthHeader(UT_USER, UT_PASS);
@@ -1029,13 +1061,14 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($r['X-UT_PASS'] != UT_PASS) {
 			$http->_DP('test (HTTP-3) failed. (UT_PASS)');
 		}
-		// (HTTP-4) HTTP Redirection
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-4) HTTP Redirection
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_3xxFROM);
 		$http = new CHttp($url);
 		$http->GET();
 		$r = $http->getResponseHeaders();
-
 		$s = $http->getStatusLine();
 		if ($s[1] != 302) {
 			$http->_DP("test (HTTP-4) failed. (status code : {$s[1]})");
@@ -1046,8 +1079,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($r['X-CHttp-Test'] != UT_SERVERMODE_3xxTO) {
 			$http->_DP('test (HTTP-4) failed.');
 		}
-		// (HTTP-5) 50 Requests at the same time
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-5) 50 Requests at the same time
+EOSYMBOL;
+		$prof->rec($symbol);
 		$request = 50;
 		$start = time();
 		$pool = new CHttpRequestPool();
@@ -1071,8 +1106,10 @@ function __unittest__CHttp($in_servermode = NULL)
 			print 'test (HTTP-5) failed. time is over.';
 			exit;
 		}
-		// (HTTP-6) Transfer-Encoding: chunked
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-6) Transfer-Encoding: chunked
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_CHUNKEDBODY);
 		$http = new CHttp($url);
 		$http->GET();
@@ -1094,8 +1131,10 @@ function __unittest__CHttp($in_servermode = NULL)
 		$http->GET();
 		exit;
 */
-		// (HTTP-8) duplicate
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-8) duplicate
+EOSYMBOL;
+		$prof->rec($symbol);
 		$url = ut_servermode_url(UT_SERVERMODE_DUPHEADER);
 		$http = new CHttp($url);
 		$http->GET();
@@ -1110,8 +1149,51 @@ function __unittest__CHttp($in_servermode = NULL)
 		if (!in_array('x-dup: 2nd', $headers)) {
 			$http->_DP('test (HTTP-8) failed. (2st is not found)');
 		}
-		// (HTTP-9) safe API
-		$prof->rec();
+$symbol = <<<EOSYMBOL
+(HTTP-9) cache
+EOSYMBOL;
+		$prof->rec($symbol);
+		$cachedir = './.cache';
+		if (is_dir($cachedir)) {
+			if ($dh = opendir($cachedir)) {
+				while (($file = readdir($dh)) !== FALSE) {
+					if (is_file($file)) {
+						unlink($file);
+					}
+				}
+				closedir($dh);
+			}
+		} else {
+			mkdir($cachedir);
+		}
+		$url = ut_servermode_url(UT_SERVERMODE_RAND_RES);
+		$r1 = new CHttp($url);
+		if (!$r1->useCache($cachedir, 3600)) {
+			$r1->_DP('test (HTTP-9) failed.');
+		}
+		$r1->GET();
+		$r2 = new CHttp($url);
+		if (!$r2->useCache($cachedir, 3600)) {
+			$r2->_DP('test (HTTP-9) failed.');
+		}
+		$r2->GET();
+		$r3 = new CHttp($url);
+		if (!$r3->useCache($cachedir, -1)) {
+			$r3->_DP('test (HTTP-9) failed.');
+		}
+		$r3->GET();
+		// org-1 vs cache
+		if ($r1->getBody() != $r2->getBody()) {
+			$r1->_DP('test (HTTP-9) failed. (cache is broken ?)');
+		}
+		// org-1 vs org-2
+		if ($r1->getBody() == $r3->getBody()) {
+			$r1->_DP('test (HTTP-9) failed. (shoud not use cache)');
+		}
+$symbol = <<<EOSYMBOL
+(HTTP-10) safe API
+EOSYMBOL;
+		$prof->rec($symbol);
 		$http = new CHttp($url);
 		$r = $http->getStatusLine();
 		if (!is_array($r)) {
@@ -1133,7 +1215,7 @@ function __unittest__CHttp($in_servermode = NULL)
 		if ($r !== '') {
 			$http->_DP('test (HTTP-9-5) failed.');
 		}
-		$prof->rec();
+		$prof->rec('finished !!');
 		$prof->showScore();
 	}
 }
