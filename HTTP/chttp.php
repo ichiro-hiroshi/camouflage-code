@@ -333,7 +333,7 @@ class CHttp
 		$asis = array('User-Agent', 'Accept', 'Accept-Language', 'Accept-Charset');
 		foreach ($browser_headers as $key => $val) {
 			if (in_array($key, $asis)) {
-				$default[$key] = $asis;
+				$default[$key] = $val;
 			}
 		}
 		$this->setHeaders($default);
