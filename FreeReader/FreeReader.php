@@ -178,7 +178,8 @@ function {$JSON_DEBUG}(in_json)
 
 function sort_table(in_col)
 {
-	var table1 = document.getElementById('view');
+	var view_id = 'view';
+	var table1 = document.getElementById(view_id);
 	var tmp = [];
 	for (var i = 0; i < table1.rows.length; i++) {
 		tmp.push([i, table1.rows[i].cells[in_col].textContent]);
@@ -196,7 +197,7 @@ function sort_table(in_col)
 		table2.appendChild(table1.rows[tmp[i][0]].cloneNode(true));
 	}
 	table1.parentNode.replaceChild(table2, table1);
-	table2.id = 'view';
+	table2.id = view_id;
 }
 
 function json_show(in_json)
