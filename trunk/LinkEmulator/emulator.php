@@ -18,6 +18,13 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	/*
 		(1) compose JSON-Response using  emulator's result.
 	*/
+	/*
+		// HTMLScriptElement.onerror test
+		header('HTTP/1.1 500 Internal Server Error');
+		// header('HTTP/1.1 404 Not Found');
+		print 'error response';
+		exit;
+	*/
 	$next_dst = $_GET['url'];
 	$history = array();
 	$cnt = MAX_REDIRECT;
@@ -29,9 +36,12 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		$http = new CHttp($next_dst);
 		$http->GET(TRUE, TIMEOUT);
 		$next_dst = $http->getResponseHeader('Location');
-		$cookie = $http->getResponseHeader('Set-Cookie');
-		if ($cookie) {
-			array_push($history, "received cookie !! : {$cookie}");
+		$check_fields = array('Set-Cookie', 'P3P');
+		foreach ($check_fields as $field) {
+			$value = $http->getResponseHeader($field);
+			if ($value) {
+				array_push($history, "{$field}: {$value}");
+			}
 		}
 		if ($next_dst) {
 			array_push($history, $next_dst);
@@ -145,6 +155,9 @@ function emulateRequest(in_url, in_callback)
 {
 	var s = document.createElement('SCRIPT');
 	s.src = '<?php print EMULATOR_URI; ?>?url=' + encodeURIComponent(in_url) + '&callback=' + in_callback;
+	s.onerror = function () {
+		gURLStock.handleJSON(["(loading error)"]);
+	}
 	document.body.appendChild(s);
 }
 
