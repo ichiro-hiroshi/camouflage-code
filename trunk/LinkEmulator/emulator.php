@@ -14,17 +14,19 @@ define('TESTMODE_TYPE', 'content_type');
 define('TESTMODE_INDEX', 'index');
 define('TESTMODE_TABLE', 'table');
 
+function HTMLScriptElement_onerror_test()
+{
+	header('HTTP/1.1 500 Internal Server Error');
+	// header('HTTP/1.1 404 Not Found');
+	print 'error response';
+	exit;
+}
+
 if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 	/*
 		(1) compose JSON-Response using  emulator's result.
 	*/
-	/*
-		// HTMLScriptElement.onerror test
-		header('HTTP/1.1 500 Internal Server Error');
-		// header('HTTP/1.1 404 Not Found');
-		print 'error response';
-		exit;
-	*/
+	// HTMLScriptElement_onerror_test();
 	$next_dst = $_GET['url'];
 	$history = array();
 	$cnt = MAX_REDIRECT;
