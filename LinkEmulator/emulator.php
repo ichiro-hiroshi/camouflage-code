@@ -38,7 +38,8 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		$http = new CHttp($next_dst);
 		$http->GET(TRUE, TIMEOUT);
 		$next_dst = $http->getResponseHeader('Location');
-		$check_fields = array('Set-Cookie', 'P3P');
+		// $check_fields = array('Set-Cookie', 'P3P');
+		$check_fields = array('Set-Cookie');
 		foreach ($check_fields as $field) {
 			$value = $http->getResponseHeader($field);
 			if ($value) {
