@@ -11,6 +11,7 @@ define('TESTMODE_302_COOKIE', 'redirection_cookie');
 define('TESTMODE_302_LOOP', 'redirection_loop');
 define('TESTMODE_TIMEOUT', 'timeout');
 define('TESTMODE_TYPE', 'content_type');
+define('TESTMODE_P3P', 'p3p');
 define('TESTMODE_INDEX', 'index');
 define('TESTMODE_TABLE', 'table');
 
@@ -38,12 +39,11 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		$http = new CHttp($next_dst);
 		$http->GET(TRUE, TIMEOUT);
 		$next_dst = $http->getResponseHeader('Location');
-		// $check_fields = array('Set-Cookie', 'P3P');
-		$check_fields = array('Set-Cookie');
+		$check_fields = array('Set-Cookie', 'P3P');
 		foreach ($check_fields as $field) {
 			$value = $http->getResponseHeader($field);
 			if ($value) {
-				array_push($history, "{$field}: {$value}");
+				array_push($history, "{$field}: " . addslashes($value));
 			}
 		}
 		if ($next_dst) {
@@ -78,7 +78,7 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 			http://host/parh/file?test=TESTMODE_INDEX
 			http://host/parh/file?test=TESTMODE_TABLE
 	*/
-	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_COOKIE, TESTMODE_302_LOOP, TESTMODE_TIMEOUT, TESTMODE_TYPE);
+	$tests = array(TESTMODE_302_2TIMES, TESTMODE_302_COOKIE, TESTMODE_302_LOOP, TESTMODE_TIMEOUT, TESTMODE_TYPE, TESTMODE_P3P);
 	switch ($_GET['test']) {
 	case TESTMODE_302_2TIMES :
 		header('Location: ' . EMULATOR_URI .'?test=' . TESTMODE_302_COOKIE);
@@ -96,6 +96,10 @@ if (array_key_exists('url', $_GET) && array_key_exists('callback', $_GET)) {
 		break;
 	case TESTMODE_TYPE :
 		header('Content-Type: application/x-emulator-test');
+		print 'dummy';
+		break;
+	case TESTMODE_P3P :
+		header('P3P: "XXX YYY"');
 		print 'dummy';
 		break;
 	case TESTMODE_INDEX :
