@@ -9,11 +9,21 @@
 	- SCRIPT?ut : unit test
 */
 
+$SELF = substr(str_replace(__DIR__, '', __FILE__), 1);
+$DATE = 'date';
+$TERM = 'term';
+$JSON = 'json';
+$CACHEFIRST = 'cache';
+
 define('USE_CACHE', TRUE);
 //define('USE_CACHE', FALSE);
 if (USE_CACHE) {
 	define('CACHE_PATH', './.FreeReaderCache');
-	define('CACHE_LIFE', 3600);
+	if (array_key_exists($CACHEFIRST, $_GET)) {
+		define('CACHE_LIFE', 3600 * 24 * 365 * 3);
+	} else {
+		define('CACHE_LIFE', 3600);
+	}
 	if (!is_dir(CACHE_PATH)) {
 		mkdir(CACHE_PATH);
 	}
@@ -25,11 +35,6 @@ if (USE_CACHE) {
 $JSON_DEBUG = 'json_debug';
 //define('USE_RESPONSE_DEBUG', TRUE);
 define('USE_RESPONSE_DEBUG', FALSE);
-
-$SELF = substr(str_replace(__DIR__, '', __FILE__), 1);
-$DATE = 'date';
-$TERM = 'term';
-$JSON = 'json';
 
 if (array_key_exists('ut', $_GET)) {
 	// (0) unit test
@@ -93,40 +98,40 @@ EOML;
 	exit;
 } elseif (!array_key_exists($JSON, $_GET)) {
 	// (1) root content
-
 	print <<<EOHTML
 <html>
 <head>
 <style type='text/css'>
-* {background-color: black; color: white;}
-A {text-decoration: none; color: silver;}
+A {text-decoration: none; color: blue;}
 INPUT {border: solid 1px silver;}
 INPUT#t1 {width: 5%;}
 INPUT#t2 {width: 50%;}
 TABLE {margin-top: 10px;}
 TABLE, TD {border-collapse: collapse;}
+.cChecked {background-color: #ffffff;}
+.cNoCheck {background-color: #eeeeee;}
 .c250 {max-width: 250px;}
-.c350 {max-width: 350px; font-size: smaller; color: gray;}
+.c350 {max-width: 350px; font-size: smaller; color: #999999;}
 TD {border: solid 1px silver; padding: 3px;};
 </style>
 </head>
-<body onload='json_read();'>
+<body onload='fr_read_cache();'>
 <div>
-<input id='t1' type='text' value='5' />
+<input id='t1' type='text' value='10' />
 <input id='t2' type='text' />
 </div>
 <div>
-<table id='view'>
+<table id='iView'>
 </table>
 </div>
 <script type=text/javascript>
 
-HTMLInputElement.prototype.KeyCode13 = function(in_callback)
+HTMLInputElement.prototype.keyCodeAction = function(in_code, in_callback)
 {
 	var type = 'keydown';
 	var handler = (function () {
 		return function (in_e) {
-			if (in_e.keyCode == 13) {
+			if (in_e.keyCode == in_code) {
 				(in_callback)();
 				/* cancel input */
 				return false;
@@ -143,8 +148,49 @@ HTMLInputElement.prototype.KeyCode13 = function(in_callback)
 	}
 }
 
-document.getElementById('t1').KeyCode13(json_read);
-document.getElementById('t2').KeyCode13(json_read);
+HTMLTableElement.prototype.sort = function(in_col)
+{
+	var tmp = [];
+	for (var i = 0; i < this.rows.length; i++) {
+		tmp.push([i, this.rows[i].cells[in_col].textContent]);
+	}
+	tmp.sort(function(e1, e2)
+	{
+		if (e1[1] < e2[1]) {
+			return 1;
+		} else {
+			return -1;
+		}
+	});
+	var sorted = [];
+	for (var i = 0; i < tmp.length; i++) {
+		sorted.push(this.rows[tmp[i][0]].cloneNode(true));
+	}
+	for (var i = 0; i < sorted.length; i++) {
+		this.replaceChild(sorted[i], this.rows[i]);
+	}
+}
+
+function get_xhr(in_url, in_callback)
+{
+	if (window.ActiveXObject) {
+		xhr = new ActiveXObject('Msxml2.XMLHTTP');
+	} else {
+		xhr = new XMLHttpRequest();
+	}
+	xhr.onreadystatechange = (function () {
+		return function () {
+			if (this.readyState != 4) {
+				return;
+			}
+			if (this.status == 200) {
+				(in_callback)(this.responseText);
+			}
+		}
+	})();
+	xhr.open('GET', in_url);
+	xhr.send();
+}
 
 function create_element(in_e, in_text, in_url, in_classname)
 {
@@ -171,105 +217,97 @@ function create_element(in_e, in_text, in_url, in_classname)
 	return e;
 }
 
+document.getElementById('t1').keyCodeAction(13, fr_read_cache);
+document.getElementById('t2').keyCodeAction(13, fr_read_cache);
+
+var gFreeReaderView = {
+	_table : document.getElementById('iView'),
+	_appendedLinks : [],
+	removeRows : function() {
+		this._table.innerHTML = '';
+		this._appendedLinks.length = 0;
+	},
+	appendRows : function(in_hash, in_check_appended) {
+		/*
+			> in_hash :
+			> 
+			> [
+			>	{
+			>		URL : "http://～"
+			>		LIST : [
+			>			{
+			>				CATEGORY : "～",
+			>				TITLE : "～",
+			>				LINK : "～",
+			>				DESC : "～",
+			>				DATE : "～"
+			>			},
+			>			{ ... },
+			>			{ ... },
+			>		]
+			>	},
+			>	{ ... },
+			>	{ ... },
+			> ]
+		*/
+		for (i = 0; i < in_hash.length; i++) {
+			var cp = in_hash[i];
+			/*
+				cp.URL
+				cp.LIST
+			*/
+			var domain = (cp.URL.split('/'))[2];
+			LISTLOOP :
+			for (j = 0; j < cp.LIST.length; j++) {
+				var entry = cp.LIST[j];
+				/*
+					entry.CATEGORY
+					entry.TITLE
+					entry.LINK
+					entry.DESC
+					entry.DATE
+				*/
+				if (in_check_appended) {
+					for (k = 0; k < this._appendedLinks.length; k++) {
+						if (this._appendedLinks[k] == entry.LINK) {
+							continue LISTLOOP;
+						}
+					}
+				}
+				this._appendedLinks.push(entry.LINK);
+				var tr = document.createElement('TR');
+				with (entry.DATE) {
+					date = slice(0,4) + '/' + slice(4,6) + '/' + slice(6,8) +
+						' ' + slice(9,11) + ':' + slice(11,13) + ':' + slice(13,15);
+				}
+				tr.appendChild(create_element('TD', date, null, null));
+				tr.appendChild(create_element('TD', domain, cp.URL, null));
+				tr.appendChild(create_element('TD', entry.CATEGORY, null, 'c250'));
+				tr.appendChild(create_element('TD', entry.TITLE, entry.LINK, 'c250'));
+				tr.appendChild(create_element('TD', entry.DESC, null, 'c350'));
+				if (in_check_appended) {
+					tr.className = 'cChecked';
+				} else {
+					tr.className = 'cNoCheck';
+				}
+				this._table.appendChild(tr);
+			}
+		}
+	},
+	sortByDate : function() {
+		this._table.sort(0);
+	}
+};
+
 function {$JSON_DEBUG}(in_json)
 {
 	document.write(in_json);
 }
 
-function sort_table(in_col)
-{
-	var view_id = 'view';
-	var table1 = document.getElementById(view_id);
-	var tmp = [];
-	for (var i = 0; i < table1.rows.length; i++) {
-		tmp.push([i, table1.rows[i].cells[in_col].textContent]);
-	}
-	tmp.sort(function(e1, e2)
-	{
-		if (e1[1] < e2[1]) {
-			return 1;
-		} else {
-			return -1;
-		}
-	});
-	var table2 = document.createElement('TABLE');
-	for (var i = 0; i < tmp.length; i++) {
-		table2.appendChild(table1.rows[tmp[i][0]].cloneNode(true));
-	}
-	table1.parentNode.replaceChild(table2, table1);
-	table2.id = view_id;
-}
-
-function json_show(in_json)
-{
-	/*
-	[
-		{
-			URL : "http://～"
-			LIST : [
-				{
-					CATEGORY : "～",
-					TITLE : "～",
-					LINK : "～",
-					DESC : "～",
-					DATE : "～"
-				},
-				{ ... },
-				{ ... },
-			]
-		},
-		{ ... },
-		{ ... },
-	]
-	*/
-	var hash = eval(in_json);
-	var table = document.getElementById('view');
-	table.innerHTML = '';
-	for (i = 0; i < hash.length; i++) {
-		var cp = hash[i];
-		/*
-			cp.URL
-			cp.LIST
-		*/
-		var domain = (cp.URL.split('/'))[2];
-		for (j = 0; j < cp.LIST.length; j++) {
-			var entry = cp.LIST[j];
-			/*
-				entry.CATEGORY
-				entry.TITLE
-				entry.LINK
-				entry.DESC
-				entry.DATE
-			*/
-			var tr = document.createElement('TR');
-			tr.appendChild(create_element('TD', entry.DATE, null, null));
-			tr.appendChild(create_element('TD', domain, cp.URL, null));
-			tr.appendChild(create_element('TD', entry.CATEGORY, null, 'c250'));
-			tr.appendChild(create_element('TD', entry.TITLE, entry.LINK, 'c250'));
-			tr.appendChild(create_element('TD', entry.DESC, null, 'c350'));
-			table.appendChild(tr);
-		}
-	}
-	sort_table(0);
-}
-
-function json_read()
+function fr_entry(in_cache_first)
 {
 	var v1 = document.getElementById('t1').value;
 	var v2 = document.getElementById('t2').value;
-	if (window.ActiveXObject) {
-		xhr = new ActiveXObject('Msxml2.XMLHTTP');
-	} else {
-		xhr = new XMLHttpRequest();
-	}
-	xhr.onreadystatechange = function () {
-		if (this.readyState != 4) {
-			return;
-		}
-		if (this.status == 200) {
-			json_show(this.responseText);
-		}
-	}
 	var url = './{$SELF}?{$JSON}';
 	if (v1) {
 		url += '&{$DATE}=' + v1;
@@ -277,8 +315,33 @@ function json_read()
 	if (v2) {
 		url += '&{$TERM}=' + v2;
 	}
-	xhr.open('GET', url);
-	xhr.send();
+	if (in_cache_first) {
+		url += '&{$CACHEFIRST}';
+	}
+	return url;
+}
+
+function fr_handle_2nd_response(in_json)
+{
+	with (gFreeReaderView) {
+		appendRows(eval(in_json), true);
+		sortByDate();
+	}
+}
+
+function fr_handle_1st_response(in_json)
+{
+	get_xhr(fr_entry(false), fr_handle_2nd_response);
+	with (gFreeReaderView) {
+		removeRows();
+		appendRows(eval(in_json), false);
+		sortByDate();
+	}
+}
+
+function fr_read_cache()
+{
+	get_xhr(fr_entry(true), fr_handle_1st_response);
 }
 
 </script>
@@ -427,8 +490,12 @@ $_FEED2JSON_PARSE_META_DB = array(
 			),
 			/* Atom */
 			array(
-				/* 'E' => 'summary', */
 				'E' => 'content',
+				'A' => NULL
+			),
+			/* Atom */
+			array(
+				'E' => 'summary',
 				'A' => NULL
 			)
 		)
