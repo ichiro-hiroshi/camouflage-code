@@ -1,19 +1,27 @@
 <?php
 
-/*
-	[how to use]
-	- SCRIPT : view
-	- SCRIPT?json
-		- GET : script returns json-data using default feed-data.
-		- POST (API) : script returns json-data using posted URL-set sparated by "\n".
-	- SCRIPT?ut : unit test
-*/
-
 $SELF = substr(str_replace(__DIR__, '', __FILE__), 1);
 $DATE = 'date';
 $TERM = 'term';
 $JSON = 'json';
+$UT = 'ut';
+$REMOVE = 'remove';
 $CACHEFIRST = 'cache-first';
+
+/*
+	[how to use]
+	- {$SELF} :
+		---> view
+	- {$SELF}?{$JSON}
+		- using GET method :
+			---> script returns json-data using default feed-data.
+		- using POST method (API) :
+			---> script returns json-data using posted URL-set sparated by "\n".
+	- {$SELF}?{$UT} :
+		---> unit test
+	- {$SELF}?{$REMOVE} :
+		---> remove cached file
+*/
 
 define('USE_CACHE', TRUE);
 //define('USE_CACHE', FALSE);
@@ -28,6 +36,17 @@ if (USE_CACHE) {
 		mkdir(CACHE_PATH);
 	}
 	$COMMENTOUT2NDXHR = '';
+	if (array_key_exists($REMOVE, $_GET)) {
+		if ($dh = opendir(CACHE_PATH)) {
+			while (($fname = readdir($dh)) !== FALSE) {
+				$cache = CACHE_PATH . "/{$fname}";
+				if (is_file($cache)) {
+					unlink($cache);
+				}
+			}
+			closedir($dh);
+		}
+	}
 } else {
 	define('CACHE_PATH', NULL);
 	define('CACHE_LIFE', 0);
@@ -38,7 +57,7 @@ $JSON_DEBUG = 'json_debug';
 //define('USE_RESPONSE_DEBUG', TRUE);
 define('USE_RESPONSE_DEBUG', FALSE);
 
-if (array_key_exists('ut', $_GET)) {
+if (array_key_exists($UT, $_GET)) {
 	// (0) unit test
 	$testml =<<<EOML
 <testml>
@@ -110,6 +129,7 @@ INPUT#t1 {width: 5%;}
 INPUT#t2 {width: 50%;}
 TABLE {margin-top: 10px;}
 TABLE, TD {border-collapse: collapse;}
+IFRAME {display: none; visibility: hidden;}
 .cChecked {background-color: #ffffff;}
 .cNoCheck {background-color: #eeeeee;}
 .c250 {max-width: 250px;}
@@ -296,6 +316,9 @@ var gFreeReaderView = {
 	},
 	sortByDate : function() {
 		this._table.sort(0);
+	},
+	rows : function() {
+		return this._appendedLinks.length;
 	}
 };
 
@@ -352,6 +375,9 @@ function fr_handle_2nd_response(in_status, in_json)
 		with (gFreeReaderView) {
 			appendRows(eval(in_json), true);
 			sortByDate();
+			if (rows() == 0) {
+				location.href = './{$SELF}?{$REMOVE}';
+			}
 		}
 	}
 }
