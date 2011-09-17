@@ -13,7 +13,7 @@ $SELF = substr(str_replace(__DIR__, '', __FILE__), 1);
 $DATE = 'date';
 $TERM = 'term';
 $JSON = 'json';
-$CACHEFIRST = 'cache';
+$CACHEFIRST = 'cache-first';
 
 define('USE_CACHE', TRUE);
 //define('USE_CACHE', FALSE);
@@ -27,9 +27,11 @@ if (USE_CACHE) {
 	if (!is_dir(CACHE_PATH)) {
 		mkdir(CACHE_PATH);
 	}
+	$COMMENTOUT2NDXHR = '';
 } else {
 	define('CACHE_PATH', NULL);
 	define('CACHE_LIFE', 0);
+	$COMMENTOUT2NDXHR = '// ';
 }
 
 $JSON_DEBUG = 'json_debug';
@@ -183,9 +185,7 @@ function get_xhr(in_url, in_callback)
 			if (this.readyState != 4) {
 				return;
 			}
-			if (this.status == 200) {
-				(in_callback)(this.responseText);
-			}
+			(in_callback)(this.status, this.responseText);
 		}
 	})();
 	xhr.open('GET', in_url);
@@ -233,14 +233,14 @@ var gFreeReaderView = {
 			> 
 			> [
 			>	{
-			>		URL : "http://～"
+			>		URL : "http://..."
 			>		LIST : [
 			>			{
-			>				CATEGORY : "～",
-			>				TITLE : "～",
-			>				LINK : "～",
-			>				DESC : "～",
-			>				DATE : "～"
+			>				CATEGORY : "...",
+			>				TITLE : "...",
+			>				LINK : "...",
+			>				DESC : "...",
+			>				DATE : "..."
 			>			},
 			>			{ ... },
 			>			{ ... },
@@ -304,6 +304,30 @@ function {$JSON_DEBUG}(in_json)
 	document.write(in_json);
 }
 
+function fr_input_enable()
+{
+	with (document.getElementById('t1')) {
+		disabled = false;
+		style.backgroundColor = 'white';
+	}
+	with (document.getElementById('t2')) {
+		disabled = false;
+		style.backgroundColor = 'white';
+	}
+}
+
+function fr_input_disable()
+{
+	with (document.getElementById('t1')) {
+		disabled = true;
+		style.backgroundColor = 'silver';
+	}
+	with (document.getElementById('t2')) {
+		disabled = true;
+		style.backgroundColor = 'silver';
+	}
+}
+
 function fr_entry(in_cache_first)
 {
 	var v1 = document.getElementById('t1').value;
@@ -321,26 +345,34 @@ function fr_entry(in_cache_first)
 	return url;
 }
 
-function fr_handle_2nd_response(in_json)
+function fr_handle_2nd_response(in_status, in_json)
 {
-	with (gFreeReaderView) {
-		appendRows(eval(in_json), true);
-		sortByDate();
+	fr_input_enable();
+	if (in_status == 200) {
+		with (gFreeReaderView) {
+			appendRows(eval(in_json), true);
+			sortByDate();
+		}
 	}
 }
 
-function fr_handle_1st_response(in_json)
+function fr_handle_1st_response(in_status, in_json)
 {
-	get_xhr(fr_entry(false), fr_handle_2nd_response);
-	with (gFreeReaderView) {
-		removeRows();
-		appendRows(eval(in_json), false);
-		sortByDate();
+	fr_input_enable();
+	if (in_status == 200) {
+		{$COMMENTOUT2NDXHR}fr_input_disable();
+		{$COMMENTOUT2NDXHR}get_xhr(fr_entry(false), fr_handle_2nd_response);
+		with (gFreeReaderView) {
+			removeRows();
+			appendRows(eval(in_json), false);
+			sortByDate();
+		}
 	}
 }
 
 function fr_read_cache()
 {
+	fr_input_disable();
 	get_xhr(fr_entry(true), fr_handle_1st_response);
 }
 
@@ -741,8 +773,15 @@ foreach ($_FEED_LIST as $url => $filter) {
 }
 $pool->send();
 $jsons = array();
+$x_network = 0;
+$x_cache = 0;
 foreach ($_FEED_LIST as $url => $filter) {
 	$r = $pool->getFinishedRequest($url);
+	if ($r->cacheRead()) {
+		$x_cache++;
+	} else {
+		$x_network++;
+	}
 	$list = feed2json($r->getBody(), F_DATE, F_TERM, $filter);
 	$json = <<<EOJSON
 	{
@@ -753,6 +792,8 @@ EOJSON;
 	array_push($jsons, $json);
 }
 header('Content-Type: text/javascript; charset=utf-8');
+header("X-Read-From-Network: {$x_network}");
+header("X-Read-From-Cache: {$x_cache}");
 if (USE_RESPONSE_DEBUG) {
 	print "{$JSON_DEBUG}(";
 }
