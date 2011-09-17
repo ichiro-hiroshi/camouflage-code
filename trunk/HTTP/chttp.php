@@ -80,6 +80,7 @@ class CHttp
 		$this->_method = 'GET';
 		$this->_cache = NULL;
 		$this->_cacheLife = 0;
+		$this->_cacheRead = FALSE;
 	}
 
 	function _DP($in_string = NULL) {
@@ -132,8 +133,13 @@ class CHttp
 		}
 	}
 
+	function cacheRead() {
+		return $this->_cacheRead;
+	}
+
 	function _streamOpen($in_host, $in_port) {
 		if ($this->_isFreshCache()) {
+			$this->_cacheRead = TRUE;
 			$this->_handle = fopen($this->_cache, 'r');
 		} else {
 			$this->_handle = @fsockopen($in_host, $in_port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
@@ -145,7 +151,7 @@ class CHttp
 	}
 
 	function _streamPuts($in_data) {
-		if ($this->_isFreshCache()) {
+		if ($this->cacheRead()) {
 			return;
 		} else {
 			fputs($this->_handle, $in_data);
@@ -165,9 +171,10 @@ class CHttp
 			fclose($this->_handle);
 			$this->_handle = NULL;
 			$this->_readyState = CHTTP_READYSTATE_LOADED;
-			if (!$this->_isFreshCache()) {
+			if (!$this->cacheRead()) {
 				$this->_saveCache();
 			}
+			chmod($this->_cache, 0666);
 		}
 	}
 
