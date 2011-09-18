@@ -5,8 +5,8 @@ $DATE = 'date';
 $TERM = 'term';
 $JSON = 'json';
 $UT = 'ut';
-$REMOVE = 'remove';
-$CACHEFIRST = 'cache-first';
+$CO_REMOVE = 'remove';
+$CO_CACHE1ST = 'cache1st';
 
 /*
 	[how to use]
@@ -19,7 +19,7 @@ $CACHEFIRST = 'cache-first';
 			---> script returns json-data using posted URL-set sparated by "\n".
 	- {$SELF}?{$UT} :
 		---> unit test
-	- {$SELF}?{$REMOVE} :
+	- {$SELF}?{$CO_REMOVE} :
 		---> remove cached file
 */
 
@@ -27,16 +27,7 @@ define('USE_CACHE', TRUE);
 //define('USE_CACHE', FALSE);
 if (USE_CACHE) {
 	define('CACHE_PATH', './.FreeReaderCache');
-	if (array_key_exists($CACHEFIRST, $_GET)) {
-		define('CACHE_LIFE', 3600 * 24 * 365 * 3);
-	} else {
-		define('CACHE_LIFE', 3600);
-	}
-	if (!is_dir(CACHE_PATH)) {
-		mkdir(CACHE_PATH);
-	}
-	$COMMENTOUT2NDXHR = '';
-	if (array_key_exists($REMOVE, $_GET)) {
+	if (array_key_exists($CO_REMOVE, $_GET)) {
 		if ($dh = opendir(CACHE_PATH)) {
 			while (($fname = readdir($dh)) !== FALSE) {
 				$cache = CACHE_PATH . "/{$fname}";
@@ -46,7 +37,16 @@ if (USE_CACHE) {
 			}
 			closedir($dh);
 		}
+		define('CACHE_LIFE', 0);
+	} elseif (array_key_exists($CO_CACHE1ST, $_GET)) {
+		define('CACHE_LIFE', 3600 * 24 * 365 * 3);
+	} else {
+		define('CACHE_LIFE', 3600);
 	}
+	if (!is_dir(CACHE_PATH)) {
+		mkdir(CACHE_PATH);
+	}
+	$COMMENTOUT2NDXHR = '';
 } else {
 	define('CACHE_PATH', NULL);
 	define('CACHE_LIFE', 0);
@@ -139,7 +139,7 @@ TD {border: solid 1px silver; padding: 3px;};
 </head>
 <body onload='fr_read_cache();'>
 <div>
-<input id='t1' type='text' value='10' />
+<input id='t1' type='text' value='5' />
 <input id='t2' type='text' />
 </div>
 <div>
@@ -351,8 +351,14 @@ function fr_input_disable()
 	}
 }
 
-function fr_entry(in_cache_first)
+function fr_entry(in_cache_opt)
 {
+	/*
+		in_cache_opt :
+		1 : read [cache] ---> read [network]
+		2 : read [cache (expires CACHE_LIFE)] ---> read [network]
+		3 : remove [cache] ---> read [network]
+	*/
 	var v1 = document.getElementById('t1').value;
 	var v2 = document.getElementById('t2').value;
 	var url = './{$SELF}?{$JSON}';
@@ -362,8 +368,17 @@ function fr_entry(in_cache_first)
 	if (v2) {
 		url += '&{$TERM}=' + v2;
 	}
-	if (in_cache_first) {
-		url += '&{$CACHEFIRST}';
+	switch (in_cache_opt) {
+	case 1 :
+		url += '&{$CO_CACHE1ST}';
+		break;
+	case 2 :
+		break;
+	case 3 :
+		url += '&{$CO_REMOVE}';
+		break;
+	default :
+		break;
 	}
 	return url;
 }
@@ -375,11 +390,15 @@ function fr_handle_2nd_response(in_status, in_json)
 		with (gFreeReaderView) {
 			appendRows(eval(in_json), true);
 			sortByDate();
-			if (rows() == 0) {
-				location.href = './{$SELF}?{$REMOVE}';
-			}
 		}
 	}
+/*
+	// should stop infinite-loop
+	if (gFreeReaderView.rows() == 0) {
+		fr_input_disable();
+		get_xhr(fr_entry(3), fr_handle_2nd_response);
+	}
+*/
 }
 
 function fr_handle_1st_response(in_status, in_json)
@@ -387,7 +406,7 @@ function fr_handle_1st_response(in_status, in_json)
 	fr_input_enable();
 	if (in_status == 200) {
 		{$COMMENTOUT2NDXHR}fr_input_disable();
-		{$COMMENTOUT2NDXHR}get_xhr(fr_entry(false), fr_handle_2nd_response);
+		{$COMMENTOUT2NDXHR}get_xhr(fr_entry(2), fr_handle_2nd_response);
 		with (gFreeReaderView) {
 			removeRows();
 			appendRows(eval(in_json), false);
@@ -399,7 +418,7 @@ function fr_handle_1st_response(in_status, in_json)
 function fr_read_cache()
 {
 	fr_input_disable();
-	get_xhr(fr_entry(true), fr_handle_1st_response);
+	get_xhr(fr_entry(1), fr_handle_1st_response);
 }
 
 </script>
@@ -800,6 +819,7 @@ foreach ($_FEED_LIST as $url => $filter) {
 $pool->send();
 $jsons = array();
 $x_network = 0;
+$x_network_cached = 0;
 $x_cache = 0;
 foreach ($_FEED_LIST as $url => $filter) {
 	$r = $pool->getFinishedRequest($url);
@@ -807,6 +827,9 @@ foreach ($_FEED_LIST as $url => $filter) {
 		$x_cache++;
 	} else {
 		$x_network++;
+		if ($r->cacheUpdated()) {
+			$x_network_cached++;
+		}
 	}
 	$list = feed2json($r->getBody(), F_DATE, F_TERM, $filter);
 	$json = <<<EOJSON
@@ -818,8 +841,9 @@ EOJSON;
 	array_push($jsons, $json);
 }
 header('Content-Type: text/javascript; charset=utf-8');
-header("X-Read-From-Network: {$x_network}");
-header("X-Read-From-Cache: {$x_cache}");
+header("X-From-Network: {$x_network}");
+header("X-From-Network-And-Cached: {$x_network_cached}");
+header("X-From-Cache: {$x_cache}");
 if (USE_RESPONSE_DEBUG) {
 	print "{$JSON_DEBUG}(";
 }
