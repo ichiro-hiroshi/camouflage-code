@@ -81,6 +81,7 @@ class CHttp
 		$this->_cache = NULL;
 		$this->_cacheLife = 0;
 		$this->_cacheRead = FALSE;
+		$this->_cacheUpdated = FALSE;
 	}
 
 	function _DP($in_string = NULL) {
@@ -127,54 +128,89 @@ class CHttp
 	function _saveCache() {
 		if ($this->_cache) {
 			$h = fopen($this->_cache, 'w+');
-			fwrite($h, $this->_rawResponse);
-			fclose($h);
-			clearstatcache();
+			if ($h) {
+				fwrite($h, $this->_rawResponse);
+				fclose($h);
+				chmod($this->_cache, 0666);
+				clearstatcache();
+				return TRUE;
+			}
 		}
+		return FALSE;
 	}
 
 	function cacheRead() {
 		return $this->_cacheRead;
 	}
 
+	function cacheUpdated() {
+		return $this->_cacheUpdated;
+	}
+
 	function _streamOpen($in_host, $in_port) {
 		if ($this->_isFreshCache()) {
+			// cache
 			$this->_cacheRead = TRUE;
-			$this->_handle = fopen($this->_cache, 'r');
+			$this->_handle = @fopen($this->_cache, 'r');
+			if (!$this->_handle) {
+				$this->_DP('open-error');
+			}
 		} else {
+			// network
 			$this->_handle = @fsockopen($in_host, $in_port, $errno, $errstr, CHTTP_SOCKET_ERROR_TIMEOUT);
 			if (!$this->_handle) {
-				$this->_DP("{$errno}\n{$errstr}");
+				$this->_DP("open-error : {$errno}\n{$errstr}");
 			}
 			stream_set_blocking($this->_handle, FALSE);
 		}
 	}
 
 	function _streamPuts($in_data) {
+		if (!$this->_handle) {
+			// error of fputs
+			return FALSE;
+		}
 		if ($this->cacheRead()) {
+			// cache
 			return;
 		} else {
-			fputs($this->_handle, $in_data);
+			// network
+			return fputs($this->_handle, $in_data);
 		}
 	}
 
 	function _streamGets() {
+		if (!$this->_handle) {
+			// error of fgets
+			return FALSE;
+		}
 		return fgets($this->_handle);
 	}
 
 	function _streamEof() {
+		if (!$this->_handle) {
+			// error of feof
+			return FALSE;
+		}
 		return feof($this->_handle);
 	}
 
 	function _streamClose() {
-		if ($this->_handle) {
-			fclose($this->_handle);
-			$this->_handle = NULL;
-			$this->_readyState = CHTTP_READYSTATE_LOADED;
-			if (!$this->cacheRead()) {
-				$this->_saveCache();
+		if (!$this->_handle) {
+			return;
+		}
+		fclose($this->_handle);
+		$this->_handle = NULL;
+		$this->_readyState = CHTTP_READYSTATE_LOADED;
+		if ($this->cacheRead()) {
+			// cache
+			return;
+		} else {
+			// network
+			$s = $this->getStatusLine();
+			if (($s[1] == 200) && ($this->getBodyLength() > 0)) {
+				$this->_cacheUpdated = $this->_saveCache();
 			}
-			chmod($this->_cache, 0666);
 		}
 	}
 
@@ -398,6 +434,14 @@ class CHttp
 			return substr($this->_rawResponse, $in_s, ($in_e - $in_s));
 		} else {
 			return substr($this->_rawResponse, $in_s);
+		}
+	}
+
+	function getBodyLength() {
+		if ($this->_bodyOffset > 0) {
+			return strlen($this->_rawResponse) - $this->_bodyOffset;
+		} else {
+			return 0;
 		}
 	}
 
@@ -744,6 +788,9 @@ define('UT_SERVERMODE_GZIP', 8);
 define('UT_SERVERMODE_DUPHEADER', 9);
 define('UT_SERVERMODE_SETCOOKIE', 10);
 define('UT_SERVERMODE_RAND_RES', 11);
+define('UT_SERVERMODE_LEN1', 12);
+define('UT_SERVERMODE_LEN0', 13);
+define('UT_SERVERMODE_404', 14);
 
 define('UT_DELAYEDSEC', 1);
 
@@ -868,6 +915,19 @@ function __unittest__CHttp($in_servermode = NULL)
 		case UT_SERVERMODE_RAND_RES :
 			$output_default_body = FALSE;
 			print rand();
+			break;
+		case UT_SERVERMODE_LEN1 :
+			$output_default_body = FALSE;
+			print '*';
+			break;
+		case UT_SERVERMODE_LEN0 :
+			$output_default_body = FALSE;
+			break;
+		case UT_SERVERMODE_404 :
+			header('HTTP/1.1 404 Not Found');
+			$output_default_body = FALSE;
+			print '*';
+			break;
 		default :
 			break;
 		}
@@ -876,7 +936,21 @@ function __unittest__CHttp($in_servermode = NULL)
 			header('Content-Type: text/plain');
 			print "SERVERMODE: {$in_servermode}";
 		}
+		return;
 	} else {
+		$cachedir = './.cache';
+		if (is_dir($cachedir)) {
+			if ($dh = opendir($cachedir)) {
+				while (($file = readdir($dh)) !== FALSE) {
+					if (is_file($file)) {
+						unlink($file);
+					}
+				}
+				closedir($dh);
+			}
+		} else {
+			mkdir($cachedir);
+		}
 		$prof = new CProf();
 $symbol = <<<EOSYMBOL
 (Cookie-1) path #1
@@ -1160,19 +1234,6 @@ $symbol = <<<EOSYMBOL
 (HTTP-9) cache
 EOSYMBOL;
 		$prof->rec($symbol);
-		$cachedir = './.cache';
-		if (is_dir($cachedir)) {
-			if ($dh = opendir($cachedir)) {
-				while (($file = readdir($dh)) !== FALSE) {
-					if (is_file($file)) {
-						unlink($file);
-					}
-				}
-				closedir($dh);
-			}
-		} else {
-			mkdir($cachedir);
-		}
 		$url = ut_servermode_url(UT_SERVERMODE_RAND_RES);
 		$r1 = new CHttp($url);
 		if (!$r1->useCache($cachedir, 3600)) {
@@ -1204,26 +1265,58 @@ EOSYMBOL;
 		$http = new CHttp($url);
 		$r = $http->getStatusLine();
 		if (!is_array($r)) {
-			$http->_DP('test (HTTP-9-1) failed.');
+			$http->_DP('test (HTTP-10-1) failed.');
 		}
 		$r = $http->getResponseHeader('hoge');
 		if ($r !== NULL) {
-			$http->_DP('test (HTTP-9-2) failed.');
+			$http->_DP('test (HTTP-10-2) failed.');
 		}
 		$r = $http->getResponseHeaders(TRUE);
 		if (!is_array($r)) {
-			$http->_DP('test (HTTP-9-3) failed.');
+			$http->_DP('test (HTTP-10-3) failed.');
 		}
 		$r = $http->getResponseHeaders(FALSE);
 		if (!is_array($r)) {
-			$http->_DP('test (HTTP-9-4) failed.');
+			$http->_DP('test (HTTP-10-4) failed.');
 		}
 		$r = $http->getBody();
 		if ($r !== '') {
-			$http->_DP('test (HTTP-9-5) failed.');
+			$http->_DP('test (HTTP-10-5) failed.');
+		}
+$symbol = <<<EOSYMBOL
+(HTTP-11) response & cache
+EOSYMBOL;
+		$prof->rec($symbol);
+		$url = ut_servermode_url(UT_SERVERMODE_LEN1);
+		$http = new CHttp($url);
+		if (!$http->useCache($cachedir, -1)) {
+			$http->_DP('test (HTTP-11-1) failed.');
+		}
+		$http->GET();
+		if (!$http->cacheUpdated()) {
+			$http->_DP('test (HTTP-11-2) failed. cache should be updated.');
+		}
+		$url = ut_servermode_url(UT_SERVERMODE_LEN0);
+		$http = new CHttp($url);
+		if (!$http->useCache($cachedir, -1)) {
+			$http->_DP('test (HTTP-11-3) failed.');
+		}
+		$http->GET();
+		if ($http->cacheUpdated()) {
+			$http->_DP('test (HTTP-11-4) failed. cache should not be updated.');
+		}
+		$url = ut_servermode_url(UT_SERVERMODE_404);
+		$http = new CHttp($url);
+		if (!$http->useCache($cachedir, -1)) {
+			$http->_DP('test (HTTP-11-5) failed.');
+		}
+		$http->GET();
+		if ($http->cacheUpdated()) {
+			$http->_DP('test (HTTP-11-6) failed. cache should not be updated.');
 		}
 		$prof->rec('finished !!');
 		$prof->showScore();
+		return;
 	}
 }
 
@@ -1232,6 +1325,7 @@ define('CHTTP_CALLER', substr($_SERVER['SCRIPT_NAME'], strrpos($_SERVER['SCRIPT_
 
 if (UT_SERVERMODE) {
 	__unittest__CHttp(UT_SERVERMODE);
+	exit;
 } else {
 	if (CHTTP_SELF == CHTTP_CALLER) {
 		__unittest__CHttp();
@@ -1240,4 +1334,4 @@ if (UT_SERVERMODE) {
 	}
 }
 
-?> 
+?>
