@@ -121,8 +121,26 @@ EOML;
 	// (1) root content
 	print <<<EOHTML
 <html>
-<head>
-<style type='text/css'>
+<body>
+<div>dummy</div>
+<script type='text/javascript'>
+window.addEventListener('load', function()
+	{
+		with (document) {
+			var actualdoc = getElementsByTagName('noscript').item(0).textContent.split('_ACTUALDOCUMENT_')[1];
+			open();
+			write(actualdoc.replace(/ad:/g, ''));
+			close();
+		}
+	}, false);
+</script>
+<noscript>
+<![CDATA[
+_ACTUALDOCUMENT_
+
+<ad:html>
+<ad:head>
+<ad:style type='text/css'>
 A {text-decoration: none; color: blue;}
 INPUT {border: solid 1px silver;}
 INPUT#t1 {width: 5%;}
@@ -134,18 +152,18 @@ TABLE, TD {border-collapse: collapse;}
 .c250 {max-width: 250px;}
 .c350 {max-width: 350px; font-size: smaller; color: #999999;}
 TD {border: solid 1px silver; padding: 3px;};
-</style>
-</head>
-<body onload='fr_read_cache();'>
-<div>
-<input id='t1' type='text' value='5' />
-<input id='t2' type='text' />
-</div>
-<div>
-<table id='iView'>
-</table>
-</div>
-<script type=text/javascript>
+</ad:style>
+</ad:head>
+<ad:body>
+<ad:div>
+<ad:input id='t1' type='text' value='5' />
+<ad:input id='t2' type='text' />
+</ad:div>
+<ad:div>
+<ad:table id='iView'>
+</ad:table>
+</ad:div>
+<ad:script type=text/javascript>
 
 HTMLInputElement.prototype.keyCodeAction = function(in_code, in_callback)
 {
@@ -420,7 +438,15 @@ function fr_read_cache()
 	get_xhr(fr_entry(1), fr_handle_1st_response);
 }
 
-</script>
+window.setTimeout(fr_read_cache, 500);
+
+</ad:script>
+</ad:body>
+</ad:html>
+
+_ACTUALDOCUMENT_
+]]>
+</noscript>
 </body>
 </html>
 EOHTML;
