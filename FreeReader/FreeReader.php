@@ -133,7 +133,20 @@ TABLE, TD {border-collapse: collapse;}
 .cNoCheck {background-color: #eeeeee;}
 .c250 {max-width: 250px;}
 .c350 {max-width: 350px; font-size: smaller; color: #999999;}
-TD {border: solid 1px silver; padding: 3px;};
+TD {border: solid 1px silver; padding: 3px;}
+@-webkit-keyframes reading {
+	0% {background-color: silver;}
+	100% {background-color: white;}
+}
+.cReading {
+	-webkit-animation-name: reading;
+	-webkit-animation-timing-function: linear;
+	-webkit-animation-iteration-count: infinite;
+	-webkit-animation-duration: 1s;
+}
+.cNormal {
+	background-color: #ffffff;
+}
 </style>
 </head>
 <body onload='fr_read_cache();'>
@@ -326,28 +339,26 @@ function {$JSON_DEBUG}(in_json)
 	document.write(in_json);
 }
 
-function fr_input_enable()
+function fr_input_set_attr(in_disabled, in_classname)
 {
 	with (document.getElementById('t1')) {
-		disabled = false;
-		style.backgroundColor = 'white';
+		disabled = in_disabled;
+		className = in_classname;
 	}
 	with (document.getElementById('t2')) {
-		disabled = false;
-		style.backgroundColor = 'white';
+		disabled = in_disabled;
+		className = in_classname;
 	}
+}
+
+function fr_input_enable()
+{
+	fr_input_set_attr(false, 'cNormal');
 }
 
 function fr_input_disable()
 {
-	with (document.getElementById('t1')) {
-		disabled = true;
-		style.backgroundColor = 'silver';
-	}
-	with (document.getElementById('t2')) {
-		disabled = true;
-		style.backgroundColor = 'silver';
-	}
+	fr_input_set_attr(true, 'cReading');
 }
 
 function fr_entry(in_cache_opt)
