@@ -138,11 +138,19 @@ TD {border: solid 1px silver; padding: 3px;}
 	0% {background-color: silver;}
 	100% {background-color: white;}
 }
+@-moz-keyframes reading {
+	0% {background-color: silver;}
+	100% {background-color: white;}
+}
 .cReading {
 	-webkit-animation-name: reading;
 	-webkit-animation-timing-function: linear;
 	-webkit-animation-iteration-count: infinite;
 	-webkit-animation-duration: 1s;
+	-moz-animation-name: reading;
+	-moz-animation-timing-function: linear;
+	-moz-animation-iteration-count: infinite;
+	-moz-animation-duration: 1s;
 }
 .cNormal {
 	background-color: #ffffff;
@@ -224,6 +232,23 @@ function get_xhr(in_url, in_callback)
 	xhr.send();
 }
 
+function set_cookie(in_field, in_value)
+{
+	document.cookie = in_field + '=' + in_value;
+}
+
+function get_cookie(in_field)
+{
+	var params = document.cookie.split(';')
+	for (var i = 0; i < params.length; i++) {
+		var param = params[i].split('=', 2);
+		if (param[0].replace(/ /, '') == in_field) {
+			return param[1];
+		}
+	}
+	return null;
+}
+
 function create_element(in_e, in_text, in_url, in_classname)
 {
 	var name = in_e.toUpperCase();
@@ -249,8 +274,13 @@ function create_element(in_e, in_text, in_url, in_classname)
 	return e;
 }
 
-document.getElementById('t1').keyCodeAction(13, fr_read_cache);
-document.getElementById('t2').keyCodeAction(13, fr_read_cache);
+var INPUT1 = document.getElementById('t1');
+INPUT1.keyCodeAction(13, fr_read_cache);
+INPUT1.value = get_cookie('t1');
+
+var INPUT2 = document.getElementById('t2');
+INPUT2.keyCodeAction(13, fr_read_cache);
+INPUT2.value = get_cookie('t2');
 
 var gFreeReaderView = {
 	_table : document.getElementById('iView'),
@@ -341,11 +371,11 @@ function {$JSON_DEBUG}(in_json)
 
 function fr_input_set_attr(in_disabled, in_classname)
 {
-	with (document.getElementById('t1')) {
+	with (INPUT1) {
 		disabled = in_disabled;
 		className = in_classname;
 	}
-	with (document.getElementById('t2')) {
+	with (INPUT2) {
 		disabled = in_disabled;
 		className = in_classname;
 	}
@@ -369,8 +399,10 @@ function fr_entry(in_cache_opt)
 		2 : read [cache (expires CACHE_LIFE)] ---> read [network]
 		3 : remove [cache] ---> read [network]
 	*/
-	var v1 = document.getElementById('t1').value;
-	var v2 = document.getElementById('t2').value;
+	var v1 = INPUT1.value;
+	var v2 = INPUT2.value;
+	set_cookie('t1', v1);
+	set_cookie('t2', v2);
 	var url = './{$SELF}?{$JSON}';
 	if (v1) {
 		url += '&{$DATE}=' + v1;
