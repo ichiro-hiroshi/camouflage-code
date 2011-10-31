@@ -119,6 +119,7 @@ EOML;
 	exit;
 } elseif (!array_key_exists($JSON, $_GET)) {
 	// (1) root content
+	$SIG = md5(time());
 	print <<<EOHTML
 <html>
 <body>
@@ -127,14 +128,20 @@ EOML;
 window.addEventListener('load', function()
 	{
 		with (document) {
-			var actualdoc = getElementsByTagName('noscript').item(0).textContent.split('_ACTUALDOCUMENT_')[1];
+			var noscripts = getElementsByTagName('noscript');
+			for (var i = 0; i < noscripts.length; i++) {
+				if (noscripts.item(i).getAttribute('sig') == '{$SIG}') {
+					var actualdoc = noscripts.item(i).textContent.split('_ACTUALDOCUMENT_')[1];
+					break;
+				}
+			}
 			open();
 			write(actualdoc.replace(/ad:/g, ''));
 			close();
 		}
 	}, false);
 </script>
-<noscript>
+<noscript sig='{$SIG}'>
 <![CDATA[
 _ACTUALDOCUMENT_
 
