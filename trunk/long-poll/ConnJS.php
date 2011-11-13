@@ -622,6 +622,7 @@ define('CONN_LONGPOLL_MAXSTAY', 60);
 
 function DefaultHeader($in_status_code)
 {
+	header("Content-Type: text/plain");
 	header("Cache-Control: no-cache");
 	header("X-" . APP_PREFIX . ": {$in_status_code}");
 }
@@ -683,7 +684,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 			}
 			if (count($updates) > 0) {
 				DefaultHeader(APP_ERR_SUCCESS);
-				header('Content-Type: text/javascript;');
+				header('Content-Type: application/json');
 				$jsons = array();
 				foreach ($updates as $id => $dat) {
 					array_push($jsons, "\t{\n\t\tID:'{$id}',\n\t\tNAME:'{$dat['NAME']}',\n\t\tDATA:'{$dat['DATA']}'\n\t}");
@@ -706,7 +707,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 		break;
 	}
 } else {
-	header('Content-Type: text/javascript;');
+	header('Content-Type: text/javascript');
 	// php vars in javascript
 	$APP_PREFIX = APP_PREFIX;
 	$APP_XHEADER = APP_XHEADER;
