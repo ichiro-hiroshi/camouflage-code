@@ -78,24 +78,35 @@ function util_us()
 	return sprintf('%-015s', microtime(TRUE));
 }
 
-function util_dp($in_obj, $in_string = NULL) {
-	header('Content-Type: text/plain');
-	if (is_null($in_string)) {
-		print_r(debug_backtrace());
-	} else {
+date_default_timezone_set('Asia/Tokyo');
+
+function util_dp($in_string, $in_stdout = TRUE)
+{
+	if ($in_stdout) {
+		header('Content-Type: text/plain');
 		print $in_string;
+	} else {
+		$fh = @fopen('util_dp.txt', 'a+');
+		fwrite($fh, "\n[" . date('h:i:s') . "]\n");
+		fwrite($fh, "{$in_string}\n");
+		fclose($fh);
 	}
-	print "\n\n-----\n\n";
-	print_r($in_obj);
+}
+
+function util_dp2($in_string)
+{
+	util_dp($in_string, FALSE);
 }
 
 // database
+
+define('CCDB_SSUFFIX', '.txt');
 
 define('CCDB_MAX_CLIENT', 10);
 define('CCDB_LIFE', 10);
 define('CCDB_ID_LENGTH', 10);
 define('CCDB_SLEEP_USEC', 200000);
-define('CCDB_SLEEP_TIMES', 5);
+define('CCDB_SLEEP_RETRY', 5);
 
 define('CCDB_RWERR_SUCCESS', 1);
 define('CCDB_RWERR_NOID', 2);
@@ -139,7 +150,8 @@ class CCDB
 		$r_oldest = PHP_INT_MAX;
 		$w_oldest = PHP_INT_MAX;
 		if ($dh = opendir($this->dir)) {
-			while (($id = readdir($dh)) !== FALSE) {
+			while (($fname = readdir($dh)) !== FALSE) {
+				$id = substr($fname, 0, -strlen(CCDB_SSUFFIX));
 				$read = $this->_read($id);
 				if (!$read) {
 					continue;
@@ -161,21 +173,15 @@ class CCDB
 			'W_OLDEST' => $w_oldest,
 			'LIST' => $list);
 	}
-	function dispose() {
-		if ($dh = opendir($this->dir)) {
-			while (($id = readdir($dh)) !== FALSE) {
-				$path = "{$this->dir}/{$id}";
-				if (is_file($path)) {
-					unlink($path);
-				}
-			}
-			closedir($dh);
-		} else {
-			$this->_errExit('opendir() failed');
-		}
-	}
 	function _errExit($in_reason) {
-		util_dp($this, $in_reason);
+		if (is_null($in_reason)) {
+			$out = "[backtrace]\n" . print_r(debug_backtrace(), TRUE);
+		} else {
+			$out = $in_reason;
+		}
+		$out .= "\n\n-----\n\n";
+		$out .= print_r($this, TRUE);
+		util_dp($out);
 		exit;
 	}
 	function dpExit($in_msg = NULL) {
@@ -186,6 +192,23 @@ class CCDB
 		}
 		$this->_errExit("{$msg}\n[DB]\n" . print_r($this->_idList(), TRUE) . "\n[OBJECT]");
 	}
+	function _id2path($in_id) {
+		return "{$this->dir}/{$in_id}" . CCDB_SSUFFIX;
+	}
+	function dispose() {
+		if ($dh = opendir($this->dir)) {
+			while (($fname = readdir($dh)) !== FALSE) {
+				$id = substr($fname, 0, -strlen(CCDB_SSUFFIX));
+				$path = $this->_id2path($id);
+				if (is_file($path)) {
+					unlink($path);
+				}
+			}
+			closedir($dh);
+		} else {
+			$this->_errExit('opendir() failed');
+		}
+	}
 	function _read($in_id, $in_read_data = FALSE) {
 		/*
 			$in_read_data == TRUE
@@ -193,12 +216,10 @@ class CCDB
 			$in_read_data == FALSE
 				returns array(name, read-usec, written-usec)
 		*/
-		$path = "{$this->dir}/{$in_id}";
-		if (!is_file($path)) {
-			return NULL;
-		}
-		$fh = fopen($path, 'r');
+		$path = $this->_id2path($in_id);
+		$fh = @fopen($path, 'r');
 		if ($fh) {
+			flock($fh, LOCK_SH);
 			$ret = explode(',', trim(fgets($fh)));
 			if ($in_read_data) {
 				$data = '';
@@ -207,20 +228,24 @@ class CCDB
 				}
 				array_push($ret, $data);
 			}
+			flock($fh, LOCK_UN);
 			fclose($fh);
 			return $ret;
 		} else {
-			$this->_errExit('fopen() failed');
+			// equal to "!is_file($path)"
+			return NULL;
 		}
 	}
 	function _initId($in_name) {
 		$id = h(microtime(TRUE), $this->conf['idLength']);
-		$path = "{$this->dir}/{$id}";
-		$fh = fopen($path, 'w');
+		$path = $this->_id2path($id);
+		$fh = @fopen($path, 'w');
 		if ($fh) {
 			$r_us = util_us();
 			$w_us = $r_us - $this->conf['life'];
+			flock($fh, LOCK_EX);
 			fwrite($fh, "{$in_name},{$r_us},{$w_us}\n");
+			flock($fh, LOCK_UN);
 			fclose($fh);
 			chmod($path, 0666);
 		} else {
@@ -243,7 +268,7 @@ class CCDB
 					if (util_us() - $list['W_LATEST'] > $this->conf['life']) {
 						// (1-1) connection may be lost.
 						$cnt--;
-						$path = "{$this->dir}/{$id}";
+						$path = $this->_id2path($id);
 						if (file_exists($path)) {
 							unlink($path);
 						}
@@ -270,13 +295,13 @@ class CCDB
 					$not_read[$id] = $sec[0];
 				}
 			}
-			$times = CCDB_SLEEP_TIMES;
+			$retry = CCDB_SLEEP_RETRY;
 			do {
 				// 0.2sec
 				usleep(CCDB_SLEEP_USEC);
 				$waiting = FALSE;
-				if ($times > 0) {
-					$times--;
+				if ($retry > 0) {
+					$retry--;
 				} else {
 					// timeout (someone has not read my written-data yet)
 					return FALSE;
@@ -298,25 +323,28 @@ class CCDB
 		}
 	}
 	function _update($in_id, $in_data, $in_wait_reading) {
-		$path = "{$this->dir}/{$in_id}";
-		if (!file_exists($path)) {
-			return CCDB_RWERR_NOID;
-		}
-		$fh = fopen($path, 'r+');
+		$path = $this->_id2path($in_id);
+		$fh = @fopen($path, 'r+');
 		if ($fh) {
+			flock($fh, LOCK_SH);
 			list($name, $r_us, $w_us) = explode(',', trim(fgets($fh)));
+			flock($fh, LOCK_UN);
 			if ($in_wait_reading) {
 				if (!$this->_waitReading($in_id, $w_us)) {
+					fclose($fh);
 					return CCDB_RWERR_TIMEOUT;
 				}
 			}
 			$w_us = util_us();
+			flock($fh, LOCK_EX);
 			ftruncate($fh, 0);
 			rewind($fh);
 			fwrite($fh, "{$name},{$r_us},{$w_us}\n{$in_data}");
+			flock($fh, LOCK_UN);
 			fclose($fh);
 		} else {
-			$this->_errExit('fopen() failed');
+			// equal to "!is_file($path)"
+			return CCDB_RWERR_NOID;
 		}
 		return CCDB_RWERR_SUCCESS;
 	}
@@ -329,7 +357,8 @@ class CCDB
 	function _getUpdated($in_id, $in_us) {
 		$ret = array();
 		if ($dh = opendir($this->dir)) {
-			while (($id = readdir($dh)) !== FALSE) {
+			while (($fname = readdir($dh)) !== FALSE) {
+				$id = substr($fname, 0, -strlen(CCDB_SSUFFIX));
 				if ($in_id == $id) {
 					continue;
 				}
@@ -352,20 +381,22 @@ class CCDB
 		return $ret;
 	}
 	function getUpdated($in_id) {
-		$path = "{$this->dir}/{$in_id}";
-		if (!file_exists($path)) {
-			return CCDB_RWERR_NOID;
-		}
-		$fh = fopen($path, 'r+');
+		$path = $this->_id2path($in_id);
+		$fh = @fopen($path, 'r+');
 		if ($fh) {
+			flock($fh, LOCK_SH);
 			list($name, $r_us, $w_us) = explode(',', trim(fgets($fh)));
+			flock($fh, LOCK_UN);
 			$updates = $this->_getUpdated($in_id, $r_us);
 			$r_us = util_us();
+			flock($fh, LOCK_EX);
 			rewind($fh);
 			fwrite($fh, "{$name},{$r_us},{$w_us}\n");
+			flock($fh, LOCK_UN);
 			fclose($fh);
 		} else {
-			$this->_errExit('fopen() failed');
+			// equal to "!is_file($path)"
+			return CCDB_RWERR_NOID;
 		}
 		return $updates;
 	}
@@ -608,10 +639,10 @@ if (array_key_exists(Q_CMD, $_GET)) {
 		}
 		break;
 	case CMD_SEND :
-		$sh = fopen('php://stdin', 'rb');
+		$sh = fopen('php://input', 'rb');
 		$posted = '';
 		while (!feof($sh)) {
-			$posted .= fgets($sh);
+			$posted .= fread($sh, 8129);
 		}
 		fclose($sh);
 		if (!$posted) {
@@ -621,7 +652,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 		}
 		switch ($_GET[Q_TYPE]) {
 		case TYPE_OVERUPDATE :
-			if (($rc = $ccdb->update1($_GET[P_CLIENTID], $posted)) != CCDB_RWERR_SUCCESS) {
+			if (($rc = $ccdb->update1($_GET[P_CLIENTID], $posted)) == CCDB_RWERR_SUCCESS) {
 				DefaultHeader(APP_ERR_SUCCESS);
 			} else {
 				DefaultHeader(APP_ERR_CCDB($rc));
@@ -629,7 +660,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 			}
 			break;
 		case TYPE_WAITUPDATE :
-			if (($rc = $ccdb->update2($_GET[P_CLIENTID], $posted)) != CCDB_RWERR_SUCCESS) {
+			if (($rc = $ccdb->update2($_GET[P_CLIENTID], $posted)) == CCDB_RWERR_SUCCESS) {
 				DefaultHeader(APP_ERR_SUCCESS);
 			} else {
 				DefaultHeader(APP_ERR_CCDB($rc));
@@ -652,9 +683,10 @@ if (array_key_exists(Q_CMD, $_GET)) {
 			}
 			if (count($updates) > 0) {
 				DefaultHeader(APP_ERR_SUCCESS);
+				header('Content-Type: text/javascript;');
 				$jsons = array();
 				foreach ($updates as $id => $dat) {
-					array_push($jsons, "\t{\n\t\tID:{$id},\n\t\tNAME:{$dat['NAME']},\n\t\tDATA:{$dat['DATA']}\n\t}");
+					array_push($jsons, "\t{\n\t\tID:'{$id}',\n\t\tNAME:'{$dat['NAME']}',\n\t\tDATA:'{$dat['DATA']}'\n\t}");
 				}
 				print "[\n" . implode(",\n", $jsons) . "\n]";
 				break;
@@ -665,7 +697,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 					break;
 				} else {
 					usleep(CONN_LONGPOLL_SLEEP);
-					set_time_limit(10);
+					set_time_limit(3);
 				}
 			}
 		}
@@ -674,6 +706,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 		break;
 	}
 } else {
+	header('Content-Type: text/javascript;');
 	// php vars in javascript
 	$APP_PREFIX = APP_PREFIX;
 	$APP_XHEADER = APP_XHEADER;
@@ -689,6 +722,25 @@ if (array_key_exists(Q_CMD, $_GET)) {
 	$APP_ERR_GENERIC = APP_ERR_GENERIC;
 	// returns javascript
 	print <<<EOJS
+var APP_ERR_SUCCESS = '{$APP_ERR_SUCCESS}';
+var APP_ERR_CCDB_NOID = '{$APP_ERR_CCDB_NOID}';
+var APP_ERR_CCDB_TIMEOUT = '{$APP_ERR_CCDB_TIMEOUT}';
+var APP_ERR_GENERIC = '{$APP_ERR_GENERIC}';
+
+XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
+	if (this.readyState != 4) {
+		return null;
+	}
+	if (this.status == 200) {
+		return this.getResponseHeader('{$APP_XHEADER}');
+	} else if (this.status == 0) {
+		// xhr has been aborted
+		return null;
+	} else {
+		return '{$APP_ERR_GENERIC}';
+	}
+}
+
 var {$APP_PREFIX} = {
 	_id : null,
 	_waitLock : false,
@@ -701,25 +753,20 @@ var {$APP_PREFIX} = {
 				in_err == {$APP_ERR_SUCCESS} : you can use in_data.
 				in_err == {$APP_ERR_CCDB_NOID} : your id is expired (need re-start).
 				in_err == {$APP_ERR_GENERIC} : need retry.
-
 		*/
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function() {
 			return function() {
-				if (this.readyState != 4) {
+				var err = xhr.get{$APP_PREFIX}Err();
+				if (!err) {
 					return;
 				}
-				var err = xhr.getResponseHeader('{$APP_XHEADER}');
-				switch (err) {
-				case {$APP_ERR_SUCCESS} :
-					{$APP_PREFIX}._id = this.responseText;
+				if (err == '{$APP_ERR_SUCCESS}') {
+					{$APP_PREFIX}._id = xhr.responseText;
 					(in_cb_start)(true);
 					{$APP_PREFIX}._poll(in_cb_poll);
-					break;
-				case {$APP_ERR_GENERIC} :
-				default :
+				} else {
 					(in_cb_start)(false);
-					break;
 				}
 			};
 		})();
@@ -738,15 +785,15 @@ var {$APP_PREFIX} = {
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function() {
 			return function() {
-				if (this.readyState != 4) {
+				var err = xhr.get{$APP_PREFIX}Err();
+				if (!err) {
 					return;
 				}
 				{$APP_PREFIX}._waitLock = false;
-				var err = xhr.getResponseHeader('{$APP_XHEADER}');
 				if (err) {
 					(in_cb_send)(err);
 				} else {
-					(in_cb_send)({$APP_ERR_GENERIC});
+					(in_cb_send)('{$APP_ERR_GENERIC}');
 				}
 			};
 		})();
@@ -768,15 +815,12 @@ var {$APP_PREFIX} = {
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function() {
 			return function() {
-				if (this.readyState != 4) {
+				var err = xhr.get{$APP_PREFIX}Err();
+				if (!err) {
 					return;
 				}
-				var err = xhr.getResponseHeader('{$APP_XHEADER}');
-				if (!err) {
-					err = {$APP_ERR_GENERIC};
-				}
-				if (err == {$APP_ERR_SUCCESS}) {
-					in_cb_poll(err, this.responseText);
+				if (err == '{$APP_ERR_SUCCESS}') {
+					in_cb_poll(err, eval(xhr.responseText));
 					// next long-poll
 					{$APP_PREFIX}._poll(in_cb_poll);
 				} else {
