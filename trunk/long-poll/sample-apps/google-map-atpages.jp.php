@@ -31,7 +31,7 @@ window.addEventListener('load', function() {
 function cb_send(in_err)
 {
 	if (in_err != APP_ERR_SUCCESS) {
-		alert('send-error(' + in_err + ') & retry');
+		alert('send-error(' + in_err + ')');
 	}
 }
 
@@ -39,18 +39,22 @@ function register_listener(in_type)
 {
 	window.addEventListener(in_type,
 		function(e) {
-			ConnJS.send1(in_type + ',' + e.clientX + ',' + e.clientY, cb_send);
+			ConnJS.send1(
+				/* data (application depended format) */
+				in_type + ',' + e.clientX + ',' + e.clientY,
+				/* callback-function called after sending */
+				cb_send
+			);
 		}, false);
 }
 
 function cb_start(in_started)
 {
 	if (in_started) {
-		// register_listener('mousemove');
 		register_listener('mousedown');
 		register_listener('mouseup');
 	} else {
-		alert('start-error(' + in_started + ') & retry');
+		alert('start-error(' + in_started + ')');
 	}
 }
 
@@ -60,25 +64,22 @@ function cb_receive(in_err, in_data)
 		var recv = in_data[0].DATA.split(',');
 		switch (recv[0]) {
 		case 'mousedown' :
-			GOOGLE.drag = true;
 			GOOGLE.start_x = recv[1];
 			GOOGLE.start_y = recv[2];
 			break;
 		case 'mouseup' :
-			GOOGLE.drag = false;
 			GOOGLE.map.panBy((GOOGLE.start_x - recv[1]), (GOOGLE.start_y - recv[2]));
 			break;
 		default :
 			break;
 		}
 	} else {
-		alert('receive-error(' + in_err + ') & retry');
+		alert('receive-error(' + in_err + ')');
 	}
 }
 
 var GOOGLE = {
 	map : null,
-	drag : false,
 	start_x : 0,
 	start_y : 0
 };
@@ -94,7 +95,14 @@ function init()
 	};
 	GOOGLE.map = new google.maps.Map(document.getElementById('map_canvas'), myOptions);
 	var ua = navigator.userAgent.split(' ');
-	ConnJS.start(ua[ua.length - 1], cb_start, cb_receive);
+	ConnJS.start(
+		/* user-name */
+		ua[ua.length - 1],
+		/* callback-function called after starting */
+		cb_start,
+		/* callback-function called when receive data */
+		cb_receive
+	);
 }
 
 window.setTimeout(function() {
