@@ -195,14 +195,11 @@ class CCDB
 	function _id2path($in_id) {
 		return "{$this->dir}/{$in_id}" . CCDB_SSUFFIX;
 	}
-	function dispose() {
+	function finalize() {
 		if ($dh = opendir($this->dir)) {
 			while (($fname = readdir($dh)) !== FALSE) {
 				$id = substr($fname, 0, -strlen(CCDB_SSUFFIX));
-				$path = $this->_id2path($id);
-				if (is_file($path)) {
-					unlink($path);
-				}
+				$this->end($id);
 			}
 			closedir($dh);
 		} else {
@@ -268,10 +265,7 @@ class CCDB
 					if (util_us() - $list['W_LATEST'] > $this->conf['life']) {
 						// (1-1) connection may be lost.
 						$cnt--;
-						$path = $this->_id2path($id);
-						if (file_exists($path)) {
-							unlink($path);
-						}
+						$this->end($id);
 					} else {
 						// (1-2) need to wait for a while
 					}
@@ -283,6 +277,12 @@ class CCDB
 				}
 			}
 			return NULL;
+		}
+	}
+	function end($in_id) {
+		$path = $this->_id2path($in_id);
+		if (is_file($path)) {
+			unlink($path);
 		}
 	}
 	function _waitReading($in_id, $in_us) {
@@ -407,7 +407,7 @@ define('TEST_DB', 'testdb');
 function ccdb_test()
 {
 	$ccdb = new CCDB(TEST_DB);
-	$ccdb->dispose();
+	$ccdb->finalize();
 	$ccdb->setConfig('maxClient', 2);
 	$ccdb->setConfig('life', 1);
 // test-1 : maxClient
@@ -432,8 +432,16 @@ function ccdb_test()
 	if ($id3) {
 		$ccdb->dpExit('1-3 failed');
 	}
+	// id1 : [o]
+	// id2 : end
+	// id3 : [o]
+	$ccdb->end($id2);
+	$id3 = $ccdb->start('user3');
+	if (!$id3) {
+		$ccdb->dpExit('1-4 failed');
+	}
 // test-2 : expire
-	$ccdb->dispose();
+	$ccdb->finalize();
 	// id1 : start
 	// id2 : [x]
 	// id3 : [x]
@@ -492,7 +500,7 @@ function ccdb_test()
 	// id2 : start
 	// id3 : start
 	$ccdb->setConfig('maxClient', 3);
-	$ccdb->dispose();
+	$ccdb->finalize();
 	$id1 = $ccdb->start('user1');
 	if (!$id1) {
 		$ccdb->dpExit('3-1 failed');
@@ -542,7 +550,7 @@ function ccdb_test()
 	// id1 : start
 	// id2 : start
 	$ccdb->setConfig('maxClient', 2);
-	$ccdb->dispose();
+	$ccdb->finalize();
 	$id1 = $ccdb->start('user1');
 	if (!$id1) {
 		$ccdb->dpExit('4-1 failed');
@@ -587,6 +595,7 @@ define('Q_CMD', 'cmd');
 define('Q_TYPE', 'type');
 
 define('CMD_START', 'start');
+define('CMD_END', 'end');
 define('CMD_SEND', 'send');
 define('CMD_RECEIVE', 'reseive');
 
@@ -600,6 +609,7 @@ define('R_CLIENTID', h(P_CLIENTID, 5));
 define('R_NAME', h(P_NAME, 5));
 
 define('URL_START', entry(array(Q_CMD => CMD_START, P_NAME => R_NAME)));
+define('URL_END', entry(array(Q_CMD => CMD_END, P_CLIENTID => R_CLIENTID)));
 define('URL_SEND1', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_OVERUPDATE)));
 define('URL_SEND2', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_WAITUPDATE)));
 define('URL_RECEIVE', entry(array(Q_CMD => CMD_RECEIVE, P_CLIENTID => R_CLIENTID)));
@@ -639,6 +649,10 @@ if (array_key_exists(Q_CMD, $_GET)) {
 			DefaultHeader(APP_ERR_GENERIC);
 		}
 		break;
+	case CMD_END :
+		$ccdb->end($_GET[P_CLIENTID]);
+		DefaultHeader(APP_ERR_SUCCESS);
+		break;
 	case CMD_SEND :
 		$sh = fopen('php://input', 'rb');
 		$posted = '';
@@ -646,11 +660,6 @@ if (array_key_exists(Q_CMD, $_GET)) {
 			$posted .= fread($sh, 8129);
 		}
 		fclose($sh);
-		if (!$posted) {
-			DefaultHeader(APP_ERR_GENERIC);
-			print 'no-post-data';
-			break;
-		}
 		switch ($_GET[Q_TYPE]) {
 		case TYPE_OVERUPDATE :
 			if (($rc = $ccdb->update1($_GET[P_CLIENTID], $posted)) == CCDB_RWERR_SUCCESS) {
@@ -687,6 +696,9 @@ if (array_key_exists(Q_CMD, $_GET)) {
 				header('Content-Type: application/json');
 				$jsons = array();
 				foreach ($updates as $id => $dat) {
+					foreach ($dat as $key => $val) {
+						$dat[$key] = str_replace("'", "\'", $val);
+					}
 					array_push($jsons, "\t{\n\t\tID:'{$id}',\n\t\tNAME:'{$dat['NAME']}',\n\t\tDATA:'{$dat['DATA']}'\n\t}");
 				}
 				print "[\n" . implode(",\n", $jsons) . "\n]";
@@ -712,6 +724,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 	$APP_PREFIX = APP_PREFIX;
 	$APP_XHEADER = APP_XHEADER;
 	$URL_START = URL_START;
+	$URL_END = URL_END;
 	$URL_SEND1 = URL_SEND1;
 	$URL_SEND2 = URL_SEND2;
 	$URL_RECEIVE = URL_RECEIVE;
@@ -775,6 +788,12 @@ var {$APP_PREFIX} = {
 		xhr.open('GET', url.replace(/{$R_NAME}/, in_name), true);
 		xhr.send();
 	},
+	end : function() {
+		var xhr = new XMLHttpRequest();
+		var url = '{$URL_END}';
+		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
+		xhr.send();
+	},
 	_send : function(in_url, in_data, in_cb_send) {
 		/*
 			in_cb_send(in_err)
@@ -805,6 +824,14 @@ var {$APP_PREFIX} = {
 		this._send('{$URL_SEND1}', in_data, in_cb_send);
 	},
 	send2 : function(in_data, in_cb_send) {
+		if (this._waitLock) {
+			return false;
+		}
+		this._waitLock = true;
+		this._send('{$URL_SEND1}', in_data, in_cb_send);
+		return true;
+	},
+	send3 : function(in_data, in_cb_send) {
 		if (this._waitLock) {
 			return false;
 		}
