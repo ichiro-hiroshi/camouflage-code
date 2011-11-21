@@ -577,6 +577,7 @@ function ccdb_test()
 		$ccdb->dpExit('4-6 failed');
 	}
 // finished
+	// $ccdb->finalize();
 	$ccdb->dpExit('finished');
 }
 
@@ -741,6 +742,35 @@ var APP_ERR_CCDB_NOID = '{$APP_ERR_CCDB_NOID}';
 var APP_ERR_CCDB_TIMEOUT = '{$APP_ERR_CCDB_TIMEOUT}';
 var APP_ERR_GENERIC = '{$APP_ERR_GENERIC}';
 
+var XHRBUFF = {
+	_buff : [],
+	chain : function (in_xhr) {
+		for (var i = 0; i < this._buff.length; i++) {
+			if (!this._buff[i]) {
+				this._buff[i] = in_xhr;
+				return;
+			}
+		}
+		this._buff.push(in_xhr);
+	},
+	unChain : function (in_xhr) {
+		for (var i = 0; i < this._buff.length; i++) {
+			if (this._buff[i] == in_xhr) {
+				this._buff[i] = null;
+				return;
+			}
+		}
+	},
+	allAbort : function () {
+		for (var i = 0; i < this._buff.length; i++) {
+			if (this._buff[i]) {
+				this._buff[i].abort();
+				this._buff[i] = null;
+			}
+		}
+	}
+};
+
 XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
 	if (this.readyState != 4) {
 		return null;
@@ -789,6 +819,7 @@ var {$APP_PREFIX} = {
 		xhr.send();
 	},
 	end : function() {
+		XHRBUFF.allAbort();
 		var xhr = new XMLHttpRequest();
 		var url = '{$URL_END}';
 		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
@@ -815,13 +846,16 @@ var {$APP_PREFIX} = {
 				} else {
 					(in_cb_send)('{$APP_ERR_GENERIC}');
 				}
+				XHRBUFF.unChain(xhr);
 			};
 		})();
 		xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send(in_data);
+		XHRBUFF.chain(xhr);
 	},
 	send1 : function(in_data, in_cb_send) {
 		this._send('{$URL_SEND1}', in_data, in_cb_send);
+		return true;
 	},
 	send2 : function(in_data, in_cb_send) {
 		if (this._waitLock) {
@@ -854,11 +888,13 @@ var {$APP_PREFIX} = {
 				} else {
 					in_cb_poll(err, null);
 				}
+				XHRBUFF.unChain(xhr);
 			};
 		})();
 		var url = '{$URL_RECEIVE}';
 		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send();
+		XHRBUFF.chain(xhr);
 	}
 };
 EOJS;
