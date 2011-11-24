@@ -628,8 +628,8 @@ define('APP_ERR_GENERIC', 30);
 
 // 0.05 sec
 define('CONN_LONGPOLL_SLEEP', 50000);
-// 60 sec
-define('CONN_LONGPOLL_MAXSTAY', 60);
+// 5 min
+define('CONN_LONGPOLL_MAXSTAY', 60 * 5);
 
 function DefaultHeader($in_status_code)
 {
@@ -706,6 +706,7 @@ if (array_key_exists(Q_CMD, $_GET)) {
 				break;
 			} else {
 				if (time() - $start > CONN_LONGPOLL_MAXSTAY) {
+					$ccdb->end($_GET[P_CLIENTID]);
 					DefaultHeader(APP_ERR_GENERIC);
 					print 'long-poll timeout';
 					break;
