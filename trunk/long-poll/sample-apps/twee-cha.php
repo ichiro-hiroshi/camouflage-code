@@ -1,6 +1,61 @@
 <?php
 
-define('APP_SELF', substr(str_replace(__DIR__, '', __FILE__), 1));
+define('POST_ENTRY', substr(str_replace(__DIR__, '', __FILE__), 1));
+define('POST_DB', str_replace('.php', '', POST_ENTRY) . '.db');
+define('POST_RESPONSE', 10);
+define('POST_KEEP', 20);
+
+if (!is_dir(POST_DB)) {
+	if (!mkdir(POST_DB)) {
+		print 'can not mkdir (POST_DB).';
+		exit;
+	}
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+	$posted = '';
+	$sh = fopen('php://input', 'rb');
+	while (!feof($sh)) {
+		$posted .= fread($sh, 8129);
+	}
+	fclose($sh);
+	if ($posted) {
+		$fname = sprintf('%-015s', microtime(TRUE)) . '.txt';
+		$fh = @fopen(POST_DB . "/{$fname}", 'w');
+		if ($fh) {
+			fwrite($fh, $posted);
+			fclose($fh);
+		} else {
+			print 'can not fwrite.';
+			exit;
+		}
+	}
+	$files = array();
+	if ($dh = opendir(POST_DB)) {
+		while (($fname = readdir($dh)) !== FALSE) {
+			$path = POST_DB . "/{$fname}";
+			if (is_file($path)) {
+				array_push($files, $path);
+			}
+		}
+		closedir($dh);
+	} else {
+		print 'can not opendir.';
+		exit;
+	}
+	rsort($files);
+	for ($i = 0; $i < count($files); $i++) {
+		if ($i < POST_RESPONSE) {
+			// ********************
+			// escape & make json
+		}
+		if ($i > POST_KEEP) {
+			@unlink($files[$i]);
+		}
+	}
+	header('Content-Type: application/json');
+	exit;
+}
 
 ?>
 
@@ -47,8 +102,8 @@ TEXTAREA {
 	border-radius: 2px;
 }
 
-#MVIEW { display: none;}
-#CHECK { width: 400px; height: 50px;}
+#xMVIEW { display: none;}
+#xCHECK { width: 400px; height: 50px;}
 
 .cShow { display: block;}
 .cHide { display: none;}
@@ -135,7 +190,7 @@ var TEXTAREA_EXTENSION = {
 			alert('send-error(' + in_err + ')');
 		}
 	},
-	tweet : function(in_posted) {
+	_send : function(in_posted) {
 		if (in_posted) {
 			this.value = '';
 			var data = this.value.toPCmd();
@@ -150,6 +205,12 @@ var TEXTAREA_EXTENSION = {
 			this._onSending = this.value;
 		}
 	},
+	tweet : function() {
+		this._send(false);
+	},
+	refresh : function() {
+		this._send(true);
+	}
 };
 
 for (prop in TEXTAREA_EXTENSION) {
@@ -157,13 +218,13 @@ for (prop in TEXTAREA_EXTENSION) {
 }
 
 var gCHECK = {
-	list : {
+	_list : {
 		/* ID : ELEMENT, ... */
 	},
 	update : function(in_obj) {
-		for (var id in this.list) {
+		for (var id in this._list) {
 			if (in_obj.ID == id) {
-				this.list[id].textContent = in_obj.DATA.toOrg();
+				this._list[id].textContent = in_obj.DATA.toOrg();
 				return;
 			}
 		}
@@ -176,13 +237,9 @@ var gCHECK = {
 		var div2 = document.createElement('DIV');
 		div2.textContent = in_obj.DATA.toOrg();
 		(row.insertCell(1)).appendChild(div2);
-		this.list[in_obj.ID] = div2;
+		this._list[in_obj.ID] = div2;
 	}
 };
-
-function reload()
-{
-}
 
 function cb_receive(in_err, in_data)
 {
@@ -210,38 +267,62 @@ function cb_start(in_started)
 		window.addEventListener('keydown',
 			function(e) {
 				// tweet every key-typing
-				gE.POST.tweet(false);
+				gE.POST.tweet();
 			}, false);
 	} else {
 		alert('start-error(' + in_started + ')');
 	}
 }
 
+function update_view(in_data)
+{
+	// ********************
+	alert(in_data);
+}
+
+var gXHR = {
+	_lock : false,
+	send : function(in_data, in_callback) {
+		if (gXHR._lock) {
+			return false;
+		}
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = (function() {
+			return function() {
+				if (xhr.readyState != 4) {
+					return;
+				} else {
+					gXHR._lock = false;
+					(in_callback)(xhr.status, xhr.responseText);
+				}
+			};
+		})();
+		xhr.open('POST', '<?php print POST_ENTRY; ?>', true);
+		gXHR._lock = true;
+		xhr.send(in_data);
+		return true;
+	}
+};
+
+function reload()
+{
+	var callback = function(in_status, in_data) {
+		if (in_status == 200) {
+			update_view(in_data);
+		}
+	};
+	gXHR.send('', callback);
+}
+
 function post()
 {
-/*
-	var xhr = new XMLHttpRequest();
-	xhr.onreadystatechange = (function() {
-		return function() {
-			var err = xhr.get{$APP_PREFIX}Err();
-			if (!err) {
-				return;
-			}
-			{$APP_PREFIX}._waitLock = false;
-			if (err) {
-				(in_cb_send)(err);
-			} else {
-				(in_cb_send)('{$APP_ERR_GENERIC}');
-			}
-			XHRBUFF.unChain(xhr);
-		};
-	})();
-	xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
-	xhr.send(in_data);
-*/
-
-	// view ÇÃçXêVÇ™äÆóπÇµÇΩÇÁà»â∫Çé¿çs
-	gE.POST.tweet(true);
+	var callback = function(in_status, in_data) {
+		if (in_status == 200) {
+			update_view(in_data);
+			gE.POST.refresh();
+		}
+	};
+	gXHR.send(gE.NAME.value + "\n" + gE.POST.value, callback);
 }
 
 function logout()
