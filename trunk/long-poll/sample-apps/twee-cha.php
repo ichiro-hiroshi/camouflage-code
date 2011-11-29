@@ -72,9 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 ?>
 
-<html>
-<head>
-<style>
+<style type='text/css'>
 
 TABLE { border-collapse: collapse;}
 TD { padding: 0px;}
@@ -101,11 +99,16 @@ TEXTAREA {
 #VTBL TD, #CTBL TD {
 	padding: 2px 3px 3px 2px;
 	border: solid 1px #aaaaaa;
-	background-color: #dddddd;
+	background: -moz-linear-gradient(top, #eeeeee, #dddddd);
+	background: -webkit-gradient(linear, left top, left bottom, from(#eeeeee), to(#dddddd));
+	xbackground-color: #dddddd;
 }
 
-#MVIEW { width: 400px; height: 402px;}
-#CHECK { width: 400px; height: 300px;}
+.cName { width: 20%;}
+.cData { width: 60%;}
+
+#MVIEW { width: 400px; height: 302px;}
+#CHECK { width: 400px; height: 200px;}
 #INPUT { width: 400px; height: 100px;}
 #MVIEW, #INPUT, #CHECK {
 	border-top: solid 1px #eeeeee;
@@ -122,8 +125,6 @@ TEXTAREA {
 .cOff { background-color: #bbbbbb;}
 
 </style>
-</head>
-<body>
 <table>
 <tr>
 <td>
@@ -242,11 +243,17 @@ var gCHECK = {
 		// in_obj.NAME
 		var div1 = document.createElement('DIV');
 		div1.textContent = in_obj.NAME;
-		(row.insertCell(0)).appendChild(div1);
+		with (row.insertCell(0)) {
+			appendChild(div1);
+			className = 'cName';
+		}
 		// in_obj.DATA
 		var div2 = document.createElement('DIV');
 		div2.textContent = in_obj.DATA.toOrg();
-		(row.insertCell(1)).appendChild(div2);
+		with (row.insertCell(1)) {
+			appendChild(div2);
+			className = 'cData';
+		}
 		this._list[in_obj.ID] = div2;
 	}
 };
@@ -292,11 +299,17 @@ function update_view(in_data)
 		// NAME
 		var div1 = document.createElement('DIV');
 		div1.textContent = in_data[i].NAME;
-		(row.insertCell(0)).appendChild(div1);
+		with (row.insertCell(0)) {
+			appendChild(div1);
+			className = 'cName';
+		}
 		// DATA
 		var div2 = document.createElement('DIV');
 		div2.textContent = in_data[i].DATA;
-		(row.insertCell(1)).appendChild(div2);
+		with (row.insertCell(1)) {
+			appendChild(div2);
+			className = 'cData';
+		}
 	}
 }
 
@@ -336,6 +349,9 @@ function reload()
 
 function post()
 {
+	if (!gE.NAME.value) {
+		return;
+	}
 	var callback = function(in_status, in_data) {
 		if (in_status == 200) {
 			update_view(in_data);
@@ -370,5 +386,3 @@ function login()
 }
 
 </script>
-</body>
-</html>
