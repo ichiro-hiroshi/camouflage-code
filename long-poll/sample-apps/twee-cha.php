@@ -44,16 +44,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 		exit;
 	}
 	rsort($files);
+	$jsons = array();
 	for ($i = 0; $i < count($files); $i++) {
 		if ($i < POST_RESPONSE) {
-			// ********************
 			// escape & make json
+			$fh = @fopen($files[$i], 'r');
+			if ($fh) {
+				flock($fh, LOCK_SH);
+				$name = trim(fgets($fh));
+				$data = '';
+				while (!feof($fh)) {
+					$data .= fgets($fh);
+				}
+				flock($fh, LOCK_UN);
+				fclose($fh);
+				array_push($jsons, "\t{\n\t\tNAME:'{$name}',\n\t\tDATA:'{$data}'\n\t}");
+			}
 		}
 		if ($i > POST_KEEP) {
 			@unlink($files[$i]);
 		}
 	}
 	header('Content-Type: application/json');
+	print "[\n" . implode(",\n", $jsons) . "\n]";
 	exit;
 }
 
@@ -80,12 +93,12 @@ TEXTAREA {
 	height: 60%;
 }
 
-#CLIST {
+#VTBL, #CTBL {
 	margin-top: 5px;
 	margin-left: 5px;
 }
 
-#CLIST TD {
+#VTBL TD, #CTBL TD {
 	padding: 2px 3px 3px 2px;
 	border: solid 1px #aaaaaa;
 	background-color: #dddddd;
@@ -102,9 +115,6 @@ TEXTAREA {
 	border-radius: 2px;
 }
 
-#xMVIEW { display: none;}
-#xCHECK { width: 400px; height: 50px;}
-
 .cShow { display: block;}
 .cHide { display: none;}
 
@@ -117,12 +127,12 @@ TEXTAREA {
 <table>
 <tr>
 <td>
-	<div id='MVIEW' class='cOff'></div>
+	<div id='MVIEW' class='cOff'><table id='VTBL'></table></div>
 </td>
 <td>
 	<table>
 	<tr>
-		<td><div id='CHECK' class='cOff'><table id='CLIST'></table></div></td>
+		<td><div id='CHECK' class='cOff'><table id='CTBL'></table></div></td>
 	</tr>
 	<tr>
 	<td>
@@ -228,7 +238,7 @@ var gCHECK = {
 				return;
 			}
 		}
-		var row = gE.CLIST.insertRow(gE.CLIST.rows.length);
+		var row = gE.CTBL.insertRow(gE.CTBL.rows.length);
 		// in_obj.NAME
 		var div1 = document.createElement('DIV');
 		div1.textContent = in_obj.NAME;
@@ -276,8 +286,18 @@ function cb_start(in_started)
 
 function update_view(in_data)
 {
-	// ********************
-	alert(in_data);
+	gE.VTBL.innerHTML = '';
+	for (var i = 0; i < in_data.length; i++) {
+		var row = gE.VTBL.insertRow(gE.VTBL.rows.length);
+		// NAME
+		var div1 = document.createElement('DIV');
+		div1.textContent = in_data[i].NAME;
+		(row.insertCell(0)).appendChild(div1);
+		// DATA
+		var div2 = document.createElement('DIV');
+		div2.textContent = in_data[i].DATA;
+		(row.insertCell(1)).appendChild(div2);
+	}
 }
 
 var gXHR = {
@@ -293,7 +313,7 @@ var gXHR = {
 					return;
 				} else {
 					gXHR._lock = false;
-					(in_callback)(xhr.status, xhr.responseText);
+					(in_callback)(xhr.status, eval(xhr.responseText));
 				}
 			};
 		})();
