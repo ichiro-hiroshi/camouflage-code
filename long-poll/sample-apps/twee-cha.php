@@ -54,7 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 				$name = trim(fgets($fh));
 				$data = '';
 				while (!feof($fh)) {
-					$data .= fgets($fh);
+					if ($data) {
+						$data .= '\n';
+					}
+					$data .= trim(fgets($fh));
 				}
 				flock($fh, LOCK_UN);
 				fclose($fh);
@@ -95,7 +98,6 @@ TEXTAREA {
 	margin-top: 5px;
 	margin-left: 5px;
 }
-
 #VTBL TD, #CTBL TD {
 	padding: 2px 3px 3px 2px;
 	border: solid 1px #aaaaaa;
@@ -103,9 +105,6 @@ TEXTAREA {
 	background: -webkit-gradient(linear, left top, left bottom, from(#eeeeee), to(#dddddd));
 	xbackground-color: #dddddd;
 }
-
-.cName { width: 20%;}
-.cData { width: 60%;}
 
 #MVIEW { width: 400px; height: 302px;}
 #CHECK { width: 400px; height: 200px;}
@@ -116,6 +115,15 @@ TEXTAREA {
 	border-right: solid 1px #aaaaaa;
 	border-bottom: solid 1px #aaaaaa;
 	border-radius: 2px;
+}
+
+.cName {
+	word-break: break-all;
+	width: 50px;
+}
+.cData {
+	word-break: break-all;
+	width: 320px;
 }
 
 .cShow { display: block;}
