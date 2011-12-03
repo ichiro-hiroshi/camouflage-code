@@ -286,19 +286,6 @@ function cb_receive(in_err, in_data)
 	}
 }
 
-function cb_start(in_started)
-{
-	if (in_started) {
-		window.addEventListener('keydown',
-			function(e) {
-				// tweet every key-typing
-				gE.POST.tweet();
-			}, false);
-	} else {
-		alert('start-error(' + in_started + ')');
-	}
-}
-
 function update_view(in_data)
 {
 	gE.VTBL.innerHTML = '';
@@ -357,7 +344,7 @@ function reload()
 
 function post()
 {
-	if (!gE.NAME.value) {
+	if (!gE.POST.value) {
 		return;
 	}
 	var callback = function(in_status, in_data) {
@@ -369,6 +356,20 @@ function post()
 	gXHR.send(gE.NAME.value + "\n" + gE.POST.value, callback);
 }
 
+function listener(in_ev)
+{
+	gE.POST.tweet();
+}
+
+function cb_start(in_started)
+{
+	if (in_started) {
+		window.addEventListener('keydown', listener, false);
+	} else {
+		alert('start-error(' + in_started + ')');
+	}
+}
+
 function logout()
 {
 	gE.MVIEW.className = 'cOff';
@@ -377,10 +378,12 @@ function logout()
 	gE.LOGIN.className = 'cShow';
 	gE.WRITE.className = 'cHide';
 	ConnJS.end();
+	window.removeEventListener('keydown', listener, false);
 }
 
 function login()
 {
+	reload();
 	if (!gE.NAME.value) {
 		alert('input name');
 		return;
@@ -392,5 +395,6 @@ function login()
 	gE.WRITE.className = 'cShow';
 	ConnJS.start(gE.NAME.value, cb_start, cb_receive);
 }
+
 
 </script>
