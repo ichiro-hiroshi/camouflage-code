@@ -825,6 +825,7 @@ var {$APP_PREFIX} = {
 		var url = '{$URL_END}';
 		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send();
+		this._id = null;
 	},
 	_send : function(in_url, in_data, in_cb_send) {
 		/*
@@ -834,6 +835,9 @@ var {$APP_PREFIX} = {
 				in_err == {$APP_ERR_CCDB_TIMEOUT} : need retry.
 				in_err == {$APP_ERR_GENERIC} : need retry.
 		*/
+		if (!this._id) {
+			return false;
+		}
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function() {
 			return function() {
@@ -853,26 +857,27 @@ var {$APP_PREFIX} = {
 		xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send(in_data);
 		XHRBUFF.chain(xhr);
+		return true;
+	},
+	_send_1by1 : function(in_url, in_data, in_cb_send) {
+		if (this._waitLock) {
+			return false;
+		}
+		if (this._send(in_url, in_data, in_cb_send)) {
+			this._waitLock = true;
+			return true;
+		} else {
+			return false;
+		}
 	},
 	send1 : function(in_data, in_cb_send) {
-		this._send('{$URL_SEND1}', in_data, in_cb_send);
-		return true;
+		return this._send('{$URL_SEND1}', in_data, in_cb_send);
 	},
 	send2 : function(in_data, in_cb_send) {
-		if (this._waitLock) {
-			return false;
-		}
-		this._waitLock = true;
-		this._send('{$URL_SEND1}', in_data, in_cb_send);
-		return true;
+		return this._send_1by1('{$URL_SEND1}', in_data, in_cb_send);
 	},
 	send3 : function(in_data, in_cb_send) {
-		if (this._waitLock) {
-			return false;
-		}
-		this._waitLock = true;
-		this._send('{$URL_SEND2}', in_data, in_cb_send);
-		return true;
+		return this._send_1by1('{$URL_SEND2}', in_data, in_cb_send);
 	},
 	_poll : function(in_cb_poll) {
 		var xhr = new XMLHttpRequest();
