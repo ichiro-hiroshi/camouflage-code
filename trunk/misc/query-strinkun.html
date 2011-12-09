@@ -1,0 +1,143 @@
+<style type='text/css'>
+
+.cTABLE, .cTH, .cTD1, .cTD2 {
+	border-collapse: collapse;
+	border: solid 1px black;
+}
+.cTH {
+	color: #ffffff;
+	background-color: #999999;
+}
+.cTD1 {
+	background-color: #ffffff;
+	white-space: nowrap;
+	min-width: 1.5em;
+	max-width: 100px;
+	overflow: hidden;
+}
+.cTD2 {
+	background-color: #eeeeee;
+}
+
+</style>
+<div id='i1'></div>
+<script>
+
+var cQ = function(in_url) {
+	this._iHash = {};
+	if (in_url.indexOf('?') == -1) {
+		var query = in_url
+	} else {
+		var query = (in_url.split('?'))[1];
+	}
+	var fields = query.split('&');
+	for (var i = 0; i < fields.length; i++) {
+		var fv = fields[i].split('=');
+		if (fv.length == 2) {
+			this._iHash[fv[0]] = fv[1];
+		}
+	}
+	this._cPool._register(this._iHash);
+};
+
+cQ.prototype = {
+	_cPool : {
+		_fields : [],
+		_exists : function(in_field) {
+			for (var i = 0; i < this._fields.length; i++) {
+				if (this._fields[i] == in_field) {
+					return true;
+				}
+			}
+			return false;
+		},
+		_register : function(in_hash) {
+			for (var field in in_hash) {
+				if (!this._exists(field)) {
+					this._fields.push(field);
+				}
+			}
+		}
+	},
+	dp : function() {
+		var disp = '';
+		for (var field in this._iHash) {
+			disp += field + ' : ' + this._iHash[field] + "\n";
+		}
+		alert(disp);
+	},
+	fields : function() {
+		return this._cPool._fields;
+	},
+	hash : function() {
+		var list = this.fields();
+		var ret = {};
+		for (var i = 0; i < list.length; i++) {
+			if (this._iHash[list[i]]) {
+				ret[list[i]] = this._iHash[list[i]];
+			} else {
+				ret[list[i]] = '';
+			}
+		}
+		return ret;
+	}
+};
+
+function tag(in_e, in_class, in_child)
+{
+	return '<' + in_e + ' class="' + in_class + '">' + in_child + '</' + in_e + '>';
+}
+
+function row(in_q)
+{
+	var hash = in_q.hash();
+	var row = '';
+	for (var field in hash) {
+		var val = hash[field];
+		if (val) {
+			var cls = 'cTD1';
+		} else {
+			var cls = 'cTD2';
+		}
+		row += tag('td', cls, val);
+	}
+	return row;
+}
+
+function dropFile(in_files)
+{
+	with (new FileReader()) {
+		onload = function(e) {
+			var urls = e.target.result.split("\n");
+			var dat = {};
+			for (var i = 0; i < urls.length; i++) {
+				if (urls[i]) {
+					dat[urls[i]] = new cQ(urls[i]);
+				}
+			}
+			var fields = cQ.prototype.fields();
+			var head = ''
+			for (var i = 0; i < fields.length; i++) {
+				head += tag('th', 'cTH', fields[i]);
+			}
+			var rows = tag('tr', 'cTR', tag('th', 'cTH', 'url') + head);
+			for (var url in dat) {
+				rows += tag('tr', 'cTR', tag('td', 'cTD1', url) + row(dat[url]));
+			}
+			document.getElementById('i1').innerHTML = tag('table', 'cTABLE', rows);
+		}
+		readAsText(in_files[0]);
+	}
+}
+
+window.addEventListener('dragover', function(e) {
+	e.preventDefault();
+}, false);
+
+window.addEventListener('drop', function(e) {
+	dropFile(e.dataTransfer.files);
+	e.preventDefault();
+	e.stopPropagation();
+}, false);
+
+</script>
