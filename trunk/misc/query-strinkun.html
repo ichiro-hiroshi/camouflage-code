@@ -18,10 +18,19 @@
 .cTD2 {
 	background-color: #eeeeee;
 }
+#i1 SPAN {
+	font-size: 3em;
+	font-family: fantasy;
+	text-shadow: 3px 3px 3px silver;
+}
+#i1 TD:hover {
+	overflow-style: marquee;
+	overflow: -webkit-marquee;
+}
 
 </style>
-<div id='i1'></div>
-<script>
+<div id='i1'><span>why don&apos;t you drop your text-file here ?</span></div>
+<script type='text/javascript'>
 
 var cQ = function(in_url) {
 	this._iHash = {};
@@ -88,12 +97,16 @@ function tag(in_e, in_class, in_child)
 	return '<' + in_e + ' class="' + in_class + '">' + in_child + '</' + in_e + '>';
 }
 
+String.prototype.trim = function() {
+	return this.replace(/^\s+|\s+$/g, '');
+}
+
 function row(in_q)
 {
 	var hash = in_q.hash();
 	var row = '';
 	for (var field in hash) {
-		var val = hash[field];
+		var val = hash[field].trim();
 		if (val) {
 			var cls = 'cTD1';
 		} else {
