@@ -1,0 +1,82 @@
+<style type='text/css'>
+BODY {
+	background-color: black;
+}
+#view {
+	font-size: 8em;
+	font-family: fantasy;
+	color: #999999;
+	text-shadow: 1px 1px 3px white, -1px -1px 3px white, 1px -1px 3px white, -1px 1px 3px white;
+}
+</style>
+<div id='view'></div>
+<script type='text/javascript'>
+
+var VIEW = document.getElementById('view');
+var RESET = false;
+
+function jikan(in_num)
+{
+	return Math.floor(in_num) + ':' + Math.floor(((in_num * 100) % 100) * 60 / 100);
+}
+
+document.addEventListener('keydown', function(e) {
+	if (RESET) {
+		VIEW.innerHTML = '';
+		RESET = false;
+	}
+	switch (e.keyCode) {
+	case 8 :
+		VIEW.innerHTML = VIEW.innerHTML.substr(0, VIEW.innerHTML.length - 1);
+		e.preventDefault();
+		break;
+	case 13 :
+		RESET = true;
+		var time = VIEW.innerHTML.split('-');
+		if ((time.length != 2) || (!time[0]) || (!time[1])) {
+			return;
+		}
+		var sec = [];
+		for (var i = 0; i < 2; i++) {
+			var col = time[i].split(':');
+			var dot = time[i].split('.');
+			if (col.length == 2) {
+				sec[i] = Number(col[0]) * 3600 + Number(col[1]) * 60;
+			} else {
+				if (dot.length == 2) {
+					sec[i] = Number(dot[0]) * 3600 + Number(dot[1]) * 36;
+				} else {
+					sec[i] = Number(time[i]) * 3600;
+				}
+			}
+		}
+		if (sec[0] > sec[1]) {
+			VIEW.innerHTML += '=' + jikan((sec[0] - sec[1]) / 3600);
+		} else {
+			VIEW.innerHTML += '=' + jikan((sec[0] + (24 * 3600 - sec[1])) / 3600);
+		}
+		break;
+	/* Firefox */
+	case 59 :
+	/* Chrome */
+	case 186 :
+		VIEW.innerHTML += ':';
+		break;
+	/* Firefox */
+	case 109 :
+	/* Chrome */
+	case 189 :
+		VIEW.innerHTML += '-';
+		break;
+	case 190 :
+		VIEW.innerHTML += '.';
+		break;
+	default :
+		if ((48 <= e.keyCode) && (e.keyCode <= 57)) {
+			VIEW.innerHTML += String.fromCharCode(e.keyCode);
+		}
+		break;
+	}
+}, false);
+
+</script>
