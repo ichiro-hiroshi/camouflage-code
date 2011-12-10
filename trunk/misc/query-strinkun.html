@@ -32,12 +32,21 @@
 <div id='i1'><span>why don&apos;t you drop your text-file here ?</span></div>
 <script type='text/javascript'>
 
+var REG_APACHE_LOG = new RegExp('\] ".{3,4} ([^ ]+)');
+
 var cQ = function(in_url) {
 	this._iHash = {};
-	if (in_url.indexOf('?') == -1) {
-		var query = in_url
+	var match = in_url.match(REG_APACHE_LOG);
+	if (match) {
+		// apache log
+		var url = match[1];
 	} else {
-		var query = (in_url.split('?'))[1];
+		var url = in_url;
+	}
+	if (url.indexOf('?') == -1) {
+		var query = url
+	} else {
+		var query = (url.split('?'))[1];
 	}
 	var fields = query.split('&');
 	for (var i = 0; i < fields.length; i++) {
