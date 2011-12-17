@@ -8,6 +8,9 @@
 	color: #ffffff;
 	background-color: #999999;
 }
+.cTH:hover {
+	background-color: #ffff99;
+}
 .cTD1 {
 	background-color: #ffffff;
 	white-space: nowrap;
@@ -31,6 +34,24 @@
 </style>
 <div id='i1'><span>why don&apos;t you drop your text-file here ?</span></div>
 <script type='text/javascript'>
+
+HTMLTableElement.prototype.sort = function(in_col) {
+	var rows = this.rows;
+	var start = 1;
+	var order = [];
+	for (var i = start; i < rows.length; i++) {
+		order.push({V : rows.item(i).cells.item(in_col).textContent, I : i});
+	}
+	order.sort(function(e1, e2) {
+		return ((e1.V > e2.V) ? 1 : -1);
+	});
+	var replace = document.createElement('TABLE');
+	for (var i = 0; i < rows.length; i++) {
+		var j = (i < start) ? i : order[(i - start)].I;
+		replace.appendChild(rows.item(j).cloneNode(true));
+	}
+	this.innerHTML = replace.innerHTML;
+};
 
 var REG_APACHE_LOG = new RegExp('\] ".{3,4} ([^ ]+)');
 
@@ -101,9 +122,23 @@ cQ.prototype = {
 	}
 };
 
-function tag(in_e, in_class, in_child)
+function tag1(in_e, in_attrs, in_child)
 {
-	return '<' + in_e + ' class="' + in_class + '">' + in_child + '</' + in_e + '>';
+	var attr = '';
+	for (var prop in in_attrs) {
+		attr += ' ' + prop + '="' + in_attrs[prop] + '"';
+	}
+	return '<' + in_e + attr + '>' + in_child + '</' + in_e + '>';
+}
+
+function tag2(in_e, in_class, in_child)
+{
+	return tag1(in_e, {class : in_class}, in_child);
+}
+
+function tag3(in_e, in_attr, in_val, in_child)
+{
+	return tag1(in_e, {in_attr : in_val}, in_child);
 }
 
 String.prototype.trim = function() {
@@ -121,9 +156,14 @@ function row(in_q)
 		} else {
 			var cls = 'cTD2';
 		}
-		row += tag('td', cls, val);
+		row += tag2('td', cls, val);
 	}
 	return row;
+}
+
+function sort(in_col)
+{
+	document.getElementsByTagName('TABLE').item(0).sort(in_col);
 }
 
 function dropFile(in_files)
@@ -140,13 +180,14 @@ function dropFile(in_files)
 			var fields = cQ.prototype.fields();
 			var head = ''
 			for (var i = 0; i < fields.length; i++) {
-				head += tag('th', 'cTH', fields[i]);
+				// head += tag2('th', 'cTH', fields[i]);
+				head += tag1('th', {class : 'cTH', onclick : 'sort(' + (i + 1) + ')'}, fields[i]);
 			}
-			var rows = tag('tr', 'cTR', tag('th', 'cTH', 'url') + head);
+			var rows = tag2('tr', 'cTR', tag1('th', {class : 'cTH', onclick : 'sort(0)'}, 'url') + head);
 			for (var url in dat) {
-				rows += tag('tr', 'cTR', tag('td', 'cTD1', url) + row(dat[url]));
+				rows += tag2('tr', 'cTR', tag2('td', 'cTD1', url) + row(dat[url]));
 			}
-			document.getElementById('i1').innerHTML = tag('table', 'cTABLE', rows);
+			document.getElementById('i1').innerHTML = tag2('table', 'cTABLE', rows);
 		}
 		readAsText(in_files[0]);
 	}
