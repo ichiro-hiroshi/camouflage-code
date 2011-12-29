@@ -19,6 +19,10 @@ $ctx = array(
 		'type' => 'text/javascript',
 		'func' => 'mk_javascript'
 	),
+	'xhr' => array(
+		'type' => 'text/plain',
+		'func' => 'mk_xhr'
+	),
 	'css' => array(
 		'type' => 'text/css',
 		'func' => 'mk_css'
@@ -36,7 +40,7 @@ function mk_html()
 <html>
 <head>
 <link rel='stylesheet' href='{$SELF}?type=css' type='text/css' />
-<meta http-equiv='Set-Cookie' content='html-meta=1' />
+<meta http-equiv='Set-Cookie' content='html-meta={$SEC}' />
 </head>
 <body>
 <p>HTML</p>
@@ -56,7 +60,7 @@ function mk_iframe()
 <html>
 <head>
 <link rel='stylesheet' href='{$SELF}?type=css&from=iframe' type='text/css' />
-<meta http-equiv='Set-Cookie' content='iframe-meta=1' />
+<meta http-equiv='Set-Cookie' content='iframe-meta={$SEC}' />
 </head>
 <body>
 <p>IFRAME</p>
@@ -70,7 +74,28 @@ EOHTML;
 
 function mk_javascript()
 {
-	print 'alert(' . SEC . ');';
+	list($SEC, $SELF) = array(SEC, SELF);
+	print <<<EOJS
+String.prototype.trim = function() {
+	return this.replace(/^\s+|\s+$/g, '');
+}
+var cookies = document.cookie.split(';')
+var q = '';
+for (var i = 0; i < cookies.length; i++) {
+	if (q) {
+		q += '&';
+	}
+	q += cookies[i].trim();
+}
+var xhr = new XMLHttpRequest();
+xhr.open('GET', '{$SELF}?type=xhr&from=' + location.host + '&' + q, true);
+xhr.send();
+EOJS;
+}
+
+function mk_xhr()
+{
+	print 'dummy';
 }
 
 function mk_css()
