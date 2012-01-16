@@ -1,0 +1,281 @@
+<script type='text/javascript'>
+
+function dpProp(in_obj)
+{
+	var html = '';
+	for (var prop in in_obj) {
+		switch (typeof in_obj[prop]) {
+		case 'string' :
+		case 'number' :
+			html += '<div>' + prop + ' : ' + in_obj[prop] + '</div>';
+			break;
+		default :
+			break;
+		}
+	}
+	var div = document.createElement('DIV');
+	div.innerHTML = html;
+	document.body.appendChild(div);
+}
+
+function px2num(in_px)
+{
+	return in_px.split('px')[0];
+}
+
+var MAXX = 4;
+var MAXY = 4;
+
+var COMPLETE = function() {
+	alert('congratulations');
+};
+
+/* event-handler should not be property of gMap, because "this" means window in event-handler. */
+var ONCLICK = function(in_ev) {
+	gMap.select(in_ev.offsetX, in_ev.offsetY);
+};
+
+var IMGTOP = '10px';
+var IMGLEFT = '10px';
+
+var gMap = {
+	_w : MAXX,
+	_h : MAXY,
+	/* set after registerImg() */
+	_pszw : -1,
+	_pszh : -1,
+	/* set after registerImg() */
+	_blank : {
+		x : -1,
+		y : -1
+	},
+	/* set after registerImg() */
+	_img : null,
+	/* set after registerImg() */
+	_canvas : null,
+	/*
+		e.g.
+		0 --> (0, 0)
+		1 --> (1, 0)
+		2 --> (2, 0)
+		3 --> (3, 0)
+		4 --> (0, 1)
+		5 --> (1, 1)
+		6 --> (2, 1)
+		7 --> (3, 1)
+		...
+	*/
+	_data : [],
+	_xy2rect : function(in_x, in_y) {
+		return {
+			x1 : this._pszw * in_x + 1,
+			y1 : this._pszh * in_y + 1,
+			x2 : this._pszw * (in_x + 1),
+			y2 : this._pszh * (in_y + 1),
+			w  : this._pszw,
+			h  : this._pszh
+		};
+	},
+	_n2xy : function(in_n) {
+		var x = in_n % this._w;
+		return {x : x, y : (in_n - x) / this._w};
+	},
+	_xy2n : function(in_x, in_y) {
+		return in_y * this._w + in_x;
+	},
+	_isBlank : function(in_x, in_y) {
+		if (this._blank.x == in_x) {
+			if (this._blank.y == in_y) {
+				return true;
+			}
+		}
+		return false;
+	},
+	_setBlank : function(in_x, in_y) {
+		this._blank.x = in_x;
+		this._blank.y = in_y;
+	},
+	_getBlank : function() {
+		return {x : this._blank.x, y : this._blank.y};
+	},
+	_valid : function(in_x, in_y) {
+		if ((0 <= in_x) && (in_x < this._w) && (0 <= in_y) && (in_y < this._h)) {
+			return true;
+		} else {
+			return false;
+		}
+	},
+	_arround : function(in_x, in_y) {
+		var ret = [];
+		var tmp = [
+			{x : in_x - 1, y : in_y},
+			{x : in_x, y : in_y - 1},
+			{x : in_x + 1, y : in_y},
+			{x : in_x, y : in_y + 1}
+		];
+		for (var i = 0; i < tmp.length; i++) {
+			if (this._valid(tmp[i].x, tmp[i].y)) {
+				ret.push({x : tmp[i].x, y : tmp[i].y});
+			}
+		}
+		return ret;
+	},
+	_select : function(in_x, in_y) {
+		var tmp = this._arround(in_x, in_y);
+		for (var i = 0; i < tmp.length; i++) {
+			if (this._isBlank(tmp[i].x, tmp[i].y)) {
+				this._swap(in_x, in_y);
+				if (this._isComplete()) {
+					COMPLETE();
+				}
+				break;
+			}
+		}
+	},
+	_swap : function(in_x, in_y) {
+		var blank = this._getBlank();
+		var n1 = this._xy2n(in_x, in_y);
+		var n2 = this._xy2n(blank.x, blank.y);
+		var v1 = this._data[n1];
+		var v2 = this._data[n2];
+		this._data[n1] = v2;
+		this._data[n2] = v1;
+		this._setBlank(in_x, in_y);
+		/* (in_x, in_y) ---> blank */
+		this._drawPiece(n1, true);
+		/* (blank.x, blank.y) ---> piece */
+		this._drawPiece(n2, false);
+	},
+	_isComplete : function() {
+		for (var i = 0; i < this._data.length; i++) {
+			if (i != this._data[i]) {
+				return false;
+			}
+		}
+		return true;
+	},
+	_initRand : function() {
+		var cnt = 50;
+		while (cnt-- > 0) {
+			var blank = this._getBlank();
+			var tmp = this._arround(blank.x, blank.y);
+			var pickup = tmp[Math.floor(Math.random() * tmp.length)];
+			this._swap(pickup.x, pickup.y);
+		}
+		for (var i = 0; i < this._data.length; i++) {
+			this._drawPiece(i, false);
+		}
+		var blank = this._getBlank();
+		this._drawPiece(this._xy2n(blank.x, blank.y), true);
+	},
+	_drawPiece : function(in_n, in_blank) {
+		var dstn = in_n;
+		var dstp = this._n2xy(dstn);
+		var dstr = this._xy2rect(dstp.x, dstp.y);
+		var srcn = this._data[dstn];
+		var srcp = this._n2xy(srcn);
+		var srcr = this._xy2rect(srcp.x, srcp.y);
+		var ctx = this._canvas.getContext('2d');
+		if (in_blank) {
+			ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+			ctx.fillRect(dstr.x1, dstr.y1, dstr.x2, dstr.y2);
+		} else {
+			/* copy image */
+			ctx.drawImage(this._img, srcr.x1, srcr.y1, srcr.w, srcr.h, dstr.x1, dstr.y1, dstr.w, dstr.h);
+			/* line */
+			var line = function(ctx, x1, y1, x2, y2, color) {
+				ctx.beginPath();
+				ctx.moveTo(x1, y1);
+				ctx.lineTo(x2, y2);
+				ctx.strokeStyle = color;
+				ctx.closePath();
+				ctx.stroke();
+			};
+			line(ctx, dstr.x1, dstr.y1, dstr.x1, dstr.y2, 'rgba(255, 255, 255, 0.5)');
+			line(ctx, dstr.x1, dstr.y1, dstr.x2, dstr.y1, 'rgba(255, 255, 255, 0.5)');
+			line(ctx, dstr.x2, dstr.y2, dstr.x1, dstr.y2, 'rgba(100, 100, 100, 0.5)');
+			line(ctx, dstr.x2, dstr.y2, dstr.x2, dstr.y1, 'rgba(100, 100, 100, 0.5)');
+		}
+	},
+	/* API */
+	registerImg : function(in_elem) {
+		with (window.getComputedStyle(in_elem, '')) {
+			var szw = px2num(width);
+			var szh = px2num(height);
+		}
+		var resize = {
+			szw : szw - (szw % this._w),
+			szh : szh - (szh % this._h)
+		};
+		this._pszw = resize.szw / this._w;
+		this._pszh = resize.szh / this._h;
+		/* resize IMG */
+		in_elem.width = resize.szw;
+		in_elem.height = resize.szh;
+		/* create CANVAS element */
+		var canvas = document.createElement('CANVAS');
+		var ctx = canvas.getContext('2d');
+		canvas.width = resize.szw;
+		canvas.height = resize.szh;
+		ctx.drawImage(in_elem, 0, 0, szw, szh, 0, 0, resize.szw, resize.szh);
+		document.body.appendChild(canvas);
+		canvas.addEventListener('click', ONCLICK, false);
+		/* overlay */
+		var elems = [in_elem, canvas];
+		for (var i = 0; i < elems.length; i++) {
+			with (elems[i].style) {
+				position = 'absolute';
+				top = IMGTOP;
+				left = IMGLEFT;
+				zIndex = i;
+			}
+		}
+		/* store */
+		this._img = in_elem;
+		this._canvas = canvas;
+		/* initialize */
+		for (var i = 0; i < this._w * this._h; i++) {
+			this._data[i] = i;
+		}
+		this._setBlank(this._w - 1, this._h - 1);
+		this._initRand();
+	},
+	/* API */
+	select : function(in_posx, in_posy) {
+		this._select(
+			Math.floor(in_posx / this._pszw),
+			Math.floor(in_posy / this._pszh)
+		);
+	}
+};
+
+function dropFile(in_file)
+{
+	with (new FileReader()) {
+		onload = function(in_ev) {
+			var img = document.createElement('IMG');
+			img.src = in_ev.target.result;
+			img.addEventListener('load', function() {
+				gMap.registerImg(img);
+			}, false);
+			document.body.appendChild(img);
+		}
+		readAsDataURL(in_file);
+	}
+}
+
+window.addEventListener('dragover', function(in_ev) {
+	in_ev.preventDefault();
+}, false);
+
+window.addEventListener('drop', function(in_ev) {
+	dropFile(in_ev.dataTransfer.files[0]);
+	in_ev.preventDefault();
+	in_ev.stopPropagation();
+}, false);
+
+// ToDo
+// animation
+// why don't you text
+
+</script>
