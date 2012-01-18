@@ -1,46 +1,71 @@
+<div id='title'><span style='font-size: 3em; font-family: fantasy; text-shadow: 3px 3px 3px silver;'>why don&apos;t you drop your image-file here ?</span></div>
 <script type='text/javascript'>
 
-function dpProp(in_obj)
-{
-	var html = '';
-	for (var prop in in_obj) {
-		switch (typeof in_obj[prop]) {
-		case 'string' :
-		case 'number' :
-			html += '<div>' + prop + ' : ' + in_obj[prop] + '</div>';
-			break;
-		default :
-			break;
+var DEBUG = {
+	viewer : null,
+	init : function() {
+		var div = document.createElement('DIV');
+		with (div.style) {
+			marginLeft = '50%';
+			height = '89%';
+			overflowY = 'scroll';
+			color = 'white';
+			backgroundColor = 'black';
+		}
+		document.body.appendChild(div);
+		this.viewer = div;
+	},
+	text : function(in_text) {
+		if (!this.viewer) {
+			return;
+		}
+		var div = document.createElement('DIV');
+		div.textContent = in_text;
+		this.viewer.insertBefore(div, this.viewer.firstChild);
+	},
+	obj : function(in_obj) {
+		if (!this.viewer) {
+			return;
+		}
+		for (var prop in in_obj) {
+			switch (typeof in_obj[prop]) {
+			case 'string' :
+			case 'number' :
+				this.text(prop + ' : ' + in_obj[prop]);
+				break;
+			default :
+				break;
+			}
 		}
 	}
-	var div = document.createElement('DIV');
-	div.innerHTML = html;
-	document.body.appendChild(div);
-}
+};
+
+var CONFIG = {
+	MAXX : 4,
+	MAXY : 4,
+	COMPLETE : function() {
+		alert('congratulations');
+	},
+	/* event-handler should not be property of gMap, because "this" means window in event-handler. */
+	ONCLICK : function(in_ev) {
+		if ((typeof in_ev.offsetX) != 'undefined') {
+			gMap.select(in_ev.offsetX, in_ev.offsetY);
+		} else {
+			gMap.select(in_ev.layerX, in_ev.layerY);
+		}
+	},
+	IMGTOP : '10px',
+	IMGLEFT : '10px'
+};
 
 function px2num(in_px)
 {
 	return in_px.split('px')[0];
 }
 
-var MAXX = 4;
-var MAXY = 4;
-
-var COMPLETE = function() {
-	alert('congratulations');
-};
-
-/* event-handler should not be property of gMap, because "this" means window in event-handler. */
-var ONCLICK = function(in_ev) {
-	gMap.select(in_ev.offsetX, in_ev.offsetY);
-};
-
-var IMGTOP = '10px';
-var IMGLEFT = '10px';
-
 var gMap = {
-	_w : MAXX,
-	_h : MAXY,
+	_w : CONFIG.MAXX,
+	_h : CONFIG.MAXY,
 	/* set after registerImg() */
 	_pszw : -1,
 	_pszh : -1,
@@ -68,10 +93,10 @@ var gMap = {
 	_data : [],
 	_xy2rect : function(in_x, in_y) {
 		return {
-			x1 : this._pszw * in_x + 1,
-			y1 : this._pszh * in_y + 1,
-			x2 : this._pszw * (in_x + 1),
-			y2 : this._pszh * (in_y + 1),
+			x1 : this._pszw * in_x,
+			y1 : this._pszh * in_y,
+			x2 : this._pszw * (in_x + 1) - 1,
+			y2 : this._pszh * (in_y + 1) - 1,
 			w  : this._pszw,
 			h  : this._pszh
 		};
@@ -121,18 +146,20 @@ var gMap = {
 		return ret;
 	},
 	_select : function(in_x, in_y) {
+		DEBUG.text('click');
 		var tmp = this._arround(in_x, in_y);
 		for (var i = 0; i < tmp.length; i++) {
 			if (this._isBlank(tmp[i].x, tmp[i].y)) {
 				this._swap(in_x, in_y);
 				if (this._isComplete()) {
-					COMPLETE();
+					CONFIG.COMPLETE();
 				}
 				break;
 			}
 		}
 	},
 	_swap : function(in_x, in_y) {
+		/* ToDo : animation */
 		var blank = this._getBlank();
 		var n1 = this._xy2n(in_x, in_y);
 		var n2 = this._xy2n(blank.x, blank.y);
@@ -142,8 +169,10 @@ var gMap = {
 		this._data[n2] = v1;
 		this._setBlank(in_x, in_y);
 		/* (in_x, in_y) ---> blank */
+		DEBUG.text(in_x + ',' + in_y + '(' + v1 + ') ---> blank');
 		this._drawPiece(n1, true);
 		/* (blank.x, blank.y) ---> piece */
+		DEBUG.text(blank.x + ',' + blank.y + '(' + v2 + ') ---> ' + v1);
 		this._drawPiece(n2, false);
 	},
 	_isComplete : function() {
@@ -178,7 +207,7 @@ var gMap = {
 		var ctx = this._canvas.getContext('2d');
 		if (in_blank) {
 			ctx.fillStyle = 'rgba(255, 255, 255, 1)';
-			ctx.fillRect(dstr.x1, dstr.y1, dstr.x2, dstr.y2);
+			ctx.fillRect(dstr.x1, dstr.y1, dstr.w, dstr.h);
 		} else {
 			/* copy image */
 			ctx.drawImage(this._img, srcr.x1, srcr.y1, srcr.w, srcr.h, dstr.x1, dstr.y1, dstr.w, dstr.h);
@@ -219,14 +248,14 @@ var gMap = {
 		canvas.height = resize.szh;
 		ctx.drawImage(in_elem, 0, 0, szw, szh, 0, 0, resize.szw, resize.szh);
 		document.body.appendChild(canvas);
-		canvas.addEventListener('click', ONCLICK, false);
+		canvas.addEventListener('click', CONFIG.ONCLICK, false);
 		/* overlay */
 		var elems = [in_elem, canvas];
 		for (var i = 0; i < elems.length; i++) {
 			with (elems[i].style) {
 				position = 'absolute';
-				top = IMGTOP;
-				left = IMGLEFT;
+				top = CONFIG.IMGTOP;
+				left = CONFIG.IMGLEFT;
 				zIndex = i;
 			}
 		}
@@ -251,6 +280,8 @@ var gMap = {
 
 function dropFile(in_file)
 {
+	/* DEBUG.init(); */
+	document.getElementById('title').style.display = 'none';
 	with (new FileReader()) {
 		onload = function(in_ev) {
 			var img = document.createElement('IMG');
@@ -273,9 +304,5 @@ window.addEventListener('drop', function(in_ev) {
 	in_ev.preventDefault();
 	in_ev.stopPropagation();
 }, false);
-
-// ToDo
-// animation
-// why don't you text
 
 </script>
