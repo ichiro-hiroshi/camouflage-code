@@ -507,30 +507,34 @@ class CHttpRequestPool
 		$this->_timeout_all = $in_timeout_all;
 	}
 
-	function attach($in_chttp) {
+	function attach($in_chttp, $in_method = NULL, $in_body = NULL) {
 		if ($this->_cache_path) {
 			$in_chttp->useCache($this->_cache_path, $this->_cache_life);
 		}
-		array_push($this->_pool, $in_chttp);
+		array_push($this->_pool,
+			array(
+				'chttp'  => $in_chttp,
+				'method' => $in_method,
+				'body'   => $in_body));
 		return count($this->_pool);
 	}
 
 	function send($is_1by1 = FALSE) {
 		if ($is_1by1) {
-			foreach ($this->_pool as $http) {
-				$http->sendRequest();
-				$http->_rcevResponseBlocking(FALSE, CHTTP_SOCKET_ABORT_TIMEOUT);
+			foreach ($this->_pool as $entry) {
+				$entry['chttp']->sendRequest($entry['method'], $entry['body']);
+				$entry['chttp']->_rcevResponseBlocking(FALSE, CHTTP_SOCKET_ABORT_TIMEOUT);
 			}
 		} else {
 			$start = time();
-			foreach ($this->_pool as $http) {
-				$http->sendRequest();
+			foreach ($this->_pool as $entry) {
+				$entry['chttp']->sendRequest($entry['method'], $entry['body']);
 			}
 			do {
 				$finishd = 0;
 				$iosleep = TRUE;
-				foreach ($this->_pool as $http) {
-					switch ($http->_rcevResponse()) {
+				foreach ($this->_pool as $entry) {
+					switch ($entry['chttp']->_rcevResponse()) {
 					case CHTTP_RCEVRESPONSE_WOULDBLOCK :
 						$iosleep = FALSE;
 						break;
@@ -546,8 +550,8 @@ class CHttpRequestPool
 					}
 				}
 				if ((time() - $start) > $this->_timeout_all) {
-					foreach ($this->_pool as $http) {
-						$http->_streamClose();
+					foreach ($this->_pool as $entry) {
+						$entry['chttp']->_streamClose();
 					}
 					break;
 				}
@@ -562,17 +566,21 @@ class CHttpRequestPool
 	function getFinishedRequest($in_url) {
 		// fragment must be removed in "$in_url".
 		for ($i = 0; $i < count($this->_pool); $i++) {
-			if ($in_url != $this->_pool[$i]->url()) {
+			if ($in_url != $this->_pool[$i]['chttp']->url()) {
 				continue;
 			} else {
-				return $this->_pool[$i];
+				return $this->_pool[$i]['chttp'];
 			}
 		}
 		return NULL;
 	}
 
 	function getFinishedRequests() {
-		return $this->_pool;
+		$ret = array();
+		foreach ($this->_pool as $entry) {
+			array_push($ret, $entry['chttp']);
+		}
+		return $ret;
 	}
 }
 
