@@ -61,8 +61,8 @@ class CHttp
 				$host = $in_proxy;
 				$port = 80;
 			} else {
-				$host = substr($this->_proxy, 0, $pos);
-				$port = substr($this->_proxy, ($pos + 1));
+				$host = substr($in_proxy, 0, $pos);
+				$port = substr($in_proxy, ($pos + 1));
 			}
 			$this->_proxy = array('host' => $host, 'port' => $port);
 		} else {
@@ -519,7 +519,7 @@ class CHttpRequestPool
 		return count($this->_pool);
 	}
 
-	function send($is_1by1 = FALSE) {
+	function send($is_1by1 = FALSE, $in_header_only = FALSE) {
 		if ($is_1by1) {
 			foreach ($this->_pool as $entry) {
 				$entry['chttp']->sendRequest($entry['method'], $entry['body']);
@@ -534,7 +534,7 @@ class CHttpRequestPool
 				$finishd = 0;
 				$iosleep = TRUE;
 				foreach ($this->_pool as $entry) {
-					switch ($entry['chttp']->_rcevResponse()) {
+					switch ($entry['chttp']->_rcevResponse($in_header_only)) {
 					case CHTTP_RCEVRESPONSE_WOULDBLOCK :
 						$iosleep = FALSE;
 						break;
