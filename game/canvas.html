@@ -60,7 +60,7 @@ var CONFIG = {
 
 function px2num(in_px)
 {
-	return in_px.split('px')[0];
+	return Number(in_px.split('px')[0]);
 }
 
 var gMap = {
@@ -91,6 +91,7 @@ var gMap = {
 		...
 	*/
 	_data : [],
+	_inAnimationProgress : false,
 	_xy2rect : function(in_x, in_y) {
 		return {
 			x1 : this._pszw * in_x,
@@ -150,7 +151,7 @@ var gMap = {
 		var tmp = this._arround(in_x, in_y);
 		for (var i = 0; i < tmp.length; i++) {
 			if (this._isBlank(tmp[i].x, tmp[i].y)) {
-				this._swap(in_x, in_y);
+				this._swap(in_x, in_y, true);
 				if (this._isComplete()) {
 					CONFIG.COMPLETE();
 				}
@@ -158,22 +159,59 @@ var gMap = {
 			}
 		}
 	},
-	_swap : function(in_x, in_y) {
-		/* ToDo : animation */
+	_swap : function(in_x, in_y, in_animation) {
+		/* you can't use 'this' in callback. */
+		var self = this;
 		var blank = this._getBlank();
-		var n1 = this._xy2n(in_x, in_y);
-		var n2 = this._xy2n(blank.x, blank.y);
-		var v1 = this._data[n1];
-		var v2 = this._data[n2];
-		this._data[n1] = v2;
-		this._data[n2] = v1;
-		this._setBlank(in_x, in_y);
-		/* (in_x, in_y) ---> blank */
-		DEBUG.text(in_x + ',' + in_y + '(' + v1 + ') ---> blank');
-		this._drawPiece(n1, true);
-		/* (blank.x, blank.y) ---> piece */
-		DEBUG.text(blank.x + ',' + blank.y + '(' + v2 + ') ---> ' + v1);
-		this._drawPiece(n2, false);
+		var n1 = self._xy2n(in_x, in_y);
+		var n2 = self._xy2n(blank.x, blank.y);
+		var v1 = self._data[n1];
+		var v2 = self._data[n2];
+		var callback = (function() {return function() {
+			/* swap */
+			self._data[n1] = v2;
+			self._data[n2] = v1;
+			self._setBlank(in_x, in_y);
+			DEBUG.text(blank.x + ',' + blank.y + '(' + v2 + ') ---> ' + v1);
+			self._drawPieceOnData(n2, false);
+			self._inAnimationProgress = false;
+		};})();
+		if (!in_animation) {
+			callback();
+			return;
+		}
+		var animation = {frame : 5, spf : 16, mag : [1, 1.2, 1.5, 1.2, 1]};
+		var s_r = self._xy2rect(in_x, in_y);
+		var e_r = self._xy2rect(blank.x, blank.y);
+		var dx = Math.ceil((e_r.x1 - s_r.x1) / animation.frame);
+		var dy = Math.ceil((e_r.y1 - s_r.y1) / animation.frame);
+		self._setMiniCanvasOnData(n1);
+		var repeat = (function() {return function(in_cnt) {
+			if (in_cnt < animation.frame) {
+				window.setTimeout(function() {
+					self._showMiniCanvas(
+						(s_r.y1 + dy * in_cnt) + 'px',
+						(s_r.x1 + dx * in_cnt) + 'px',
+						animation.mag[in_cnt]
+					);
+					if (in_cnt == 0) {
+						self._drawPieceOnData(n1, true);
+					}
+					repeat(in_cnt + 1);
+				}, animation.spf);
+			} else {
+				self._hideMiniCanvas();
+				callback();
+			}
+		};})();
+		/*
+			(1) self._inAnimationProgress = true
+			(2) repeat() ---> repeat() --> ... ---> repeat()
+			(3) callback()
+			(4) self._inAnimationProgress = false
+		*/
+		self._inAnimationProgress = true;
+		repeat(0);
 	},
 	_isComplete : function() {
 		for (var i = 0; i < this._data.length; i++) {
@@ -185,32 +223,66 @@ var gMap = {
 	},
 	_initRand : function() {
 		var cnt = 50;
-		while (cnt-- > 0) {
+		var blank_before = {x : -1, y : -1};
+		while (cnt > 0) {
 			var blank = this._getBlank();
 			var tmp = this._arround(blank.x, blank.y);
 			var pickup = tmp[Math.floor(Math.random() * tmp.length)];
-			this._swap(pickup.x, pickup.y);
+			/* pickup should not be blank_before. */
+			if ((blank_before.x == pickup.x) && (blank_before.y == pickup.y)) {
+				continue;
+			} else {
+				cnt--;
+				blank_before = blank;
+			}
+			this._swap(pickup.x, pickup.y, false);
 		}
 		for (var i = 0; i < this._data.length; i++) {
-			this._drawPiece(i, false);
+			this._drawPieceOnData(i, false);
 		}
 		var blank = this._getBlank();
-		this._drawPiece(this._xy2n(blank.x, blank.y), true);
+		this._drawPieceOnData(this._xy2n(blank.x, blank.y), true);
 	},
-	_drawPiece : function(in_n, in_blank) {
+	_rectOnData : function(in_n) {
 		var dstn = in_n;
 		var dstp = this._n2xy(dstn);
 		var dstr = this._xy2rect(dstp.x, dstp.y);
 		var srcn = this._data[dstn];
 		var srcp = this._n2xy(srcn);
 		var srcr = this._xy2rect(srcp.x, srcp.y);
+		return {
+			dst : dstr,
+			src : srcr
+		};
+	},
+	_showMiniCanvas : function(in_top, in_left, in_mag) {
+		if (!document.getElementById(this._mini_canvas.id)) {
+			document.body.appendChild(this._mini_canvas);
+		}
+		with (this._mini_canvas.style) {
+			top = px2num(CONFIG.IMGTOP) + px2num(in_top) + 'px';
+			left = px2num(CONFIG.IMGLEFT) + px2num(in_left) + 'px';
+		}
+	},
+	_hideMiniCanvas : function() {
+		if (document.getElementById(this._mini_canvas.id)) {
+			document.body.removeChild(this._mini_canvas);
+		}
+	},
+	_setMiniCanvasOnData : function(in_n) {
+		var r = this._rectOnData(in_n);
+		var ctx = this._mini_canvas.getContext('2d');
+		ctx.drawImage(this._img, r.src.x1, r.src.y1, r.src.w, r.src.h, 0, 0, r.src.w, r.src.h);
+	},
+	_drawPieceOnData : function(in_n, in_blank) {
+		var r = this._rectOnData(in_n);
 		var ctx = this._canvas.getContext('2d');
 		if (in_blank) {
 			ctx.fillStyle = 'rgba(255, 255, 255, 1)';
-			ctx.fillRect(dstr.x1, dstr.y1, dstr.w, dstr.h);
+			ctx.fillRect(r.dst.x1, r.dst.y1, r.dst.w, r.dst.h);
 		} else {
 			/* copy image */
-			ctx.drawImage(this._img, srcr.x1, srcr.y1, srcr.w, srcr.h, dstr.x1, dstr.y1, dstr.w, dstr.h);
+			ctx.drawImage(this._img, r.src.x1, r.src.y1, r.src.w, r.src.h, r.dst.x1, r.dst.y1, r.dst.w, r.dst.h);
 			/* line */
 			var line = function(ctx, x1, y1, x2, y2, color) {
 				ctx.beginPath();
@@ -219,10 +291,10 @@ var gMap = {
 				ctx.strokeStyle = color;
 				ctx.stroke();
 			};
-			line(ctx, dstr.x1, dstr.y1, dstr.x1, dstr.y2, 'rgba(255, 255, 255, 0.5)');
-			line(ctx, dstr.x1, dstr.y1, dstr.x2, dstr.y1, 'rgba(255, 255, 255, 0.5)');
-			line(ctx, dstr.x2, dstr.y2, dstr.x1, dstr.y2, 'rgba(100, 100, 100, 0.5)');
-			line(ctx, dstr.x2, dstr.y2, dstr.x2, dstr.y1, 'rgba(100, 100, 100, 0.5)');
+			line(ctx, r.dst.x1, r.dst.y1, r.dst.x1, r.dst.y2, 'rgba(255, 255, 255, 0.5)');
+			line(ctx, r.dst.x1, r.dst.y1, r.dst.x2, r.dst.y1, 'rgba(255, 255, 255, 0.5)');
+			line(ctx, r.dst.x2, r.dst.y2, r.dst.x1, r.dst.y2, 'rgba(100, 100, 100, 0.5)');
+			line(ctx, r.dst.x2, r.dst.y2, r.dst.x2, r.dst.y1, 'rgba(100, 100, 100, 0.5)');
 		}
 	},
 	/* API */
@@ -248,9 +320,14 @@ var gMap = {
 		ctx.drawImage(in_elem, 0, 0, szw, szh, 0, 0, resize.szw, resize.szh);
 		document.body.appendChild(canvas);
 		canvas.addEventListener('click', CONFIG.ONCLICK, false);
+		/* create CANVAS element for animation */
+		var mini_canvas = document.createElement('CANVAS');
+		mini_canvas.width = this._pszw;
+		mini_canvas.height = this._pszh;
 		/* overlay */
-		var elems = [in_elem, canvas];
+		var elems = [in_elem, canvas, mini_canvas];
 		for (var i = 0; i < elems.length; i++) {
+			elems[i].id = 'i' + i;
 			with (elems[i].style) {
 				position = 'absolute';
 				top = CONFIG.IMGTOP;
@@ -261,6 +338,7 @@ var gMap = {
 		/* store */
 		this._img = in_elem;
 		this._canvas = canvas;
+		this._mini_canvas = mini_canvas;
 		/* initialize */
 		for (var i = 0; i < this._w * this._h; i++) {
 			this._data[i] = i;
@@ -270,6 +348,9 @@ var gMap = {
 	},
 	/* API */
 	select : function(in_posx, in_posy) {
+		if (this._inAnimationProgress) {
+			return;
+		}
 		this._select(
 			Math.floor(in_posx / this._pszw),
 			Math.floor(in_posy / this._pszh)
