@@ -33,7 +33,7 @@ function util_dp($in_obj, $in_string = NULL) {
 	exit;
 }
 
-define('CHTTP_SOCKET_OPEN_TIMEOUT', 2);
+define('CHTTP_SOCKET_OPEN_TIMEOUT', 1);
 define('CHTTP_SOCKET_BLOCKING_TIMEOUT', 5);
 define('CHTTP_IOSLEEP_USEC', 50000); // 50msec
 
@@ -293,7 +293,7 @@ class CHttp
 						if ($this->_statusLine === NULL) {
 							$this->_statusLine = $line;
 						} else {
-							array_push($this->_responseHeaders, trim($line));
+							array_push($this->_responseHeaders, $line);
 						}
 					} else {
 						// header --> entity body
@@ -546,31 +546,37 @@ class CHttpRequestPool
 	}
 
 	function send($is_1by1 = FALSE, $in_header_only = FALSE) {
+		$entries_in_pool = count($this->_pool);
 		if ($is_1by1) {
-			foreach ($this->_pool as &$entry) {
-				if ($entry['chttp']->sendRequest($entry['method'], $entry['entity'])) {
-					if ($entry['chttp']->_rcevResponseBlocking(FALSE, CHTTP_SOCKET_BLOCKING_TIMEOUT)) {
-						$entry['state'] = POOL_ESTATE_DONE;
+			for ($i = 0; $i < $entries_in_pool; $i++) {
+				$e =& $this->_pool[$i];
+				if ($e['chttp']->sendRequest($e['method'], $e['entity'])) {
+					if ($e['chttp']->_rcevResponseBlocking(FALSE, CHTTP_SOCKET_BLOCKING_TIMEOUT)) {
+						$e['state'] = POOL_ESTATE_DONE;
 					} else {
-						$entry['state'] = POOL_ESTATE_TIMEOUT_IO;
+						$e['state'] = POOL_ESTATE_TIMEOUT_IO;
 					}
 				} else {
-					$entry['state'] = POOL_ESTATE_TIMEOUT_OPEN;
+					$e['state'] = POOL_ESTATE_TIMEOUT_OPEN;
 				}
 			}
 		} else {
+			$finished = 0;
 			$start = time();
-			foreach ($this->_pool as &$entry) {
-				if (!$entry['chttp']->sendRequest($entry['method'], $entry['entity'])) {
-					$entry['state'] = POOL_ESTATE_TIMEOUT_OPEN;
+			$limit = $start + $this->_timeout_all;
+			for ($i = 0; $i < $entries_in_pool; $i++) {
+				$e =& $this->_pool[$i];
+				if (!$e['chttp']->sendRequest($e['method'], $e['entity'])) {
+					$e['state'] = POOL_ESTATE_TIMEOUT_OPEN;
+					$finished++;
 				}
 			}
-			$finishd = 0;
 			do {
 				$iosleep = TRUE;
-				foreach ($this->_pool as &$entry) {
-					if ($entry['state'] == POOL_ESTATE_DEFAULT) {
-						switch ($entry['chttp']->_rcevResponse($in_header_only)) {
+				for ($i = 0; $i < $entries_in_pool; $i++) {
+					if ($this->_pool[$i]['state'] == POOL_ESTATE_DEFAULT) {
+						$e =& $this->_pool[$i];
+						switch ($e['chttp']->_rcevResponse($in_header_only)) {
 						case CHTTP_RCEVRESPONSE_WOULDBLOCK :
 							$iosleep = FALSE;
 							break;
@@ -579,25 +585,26 @@ class CHttpRequestPool
 						case CHTTP_RCEVRESPONSE_DONE :
 						default :
 							$iosleep = FALSE;
-							$entry['state'] = POOL_ESTATE_DONE;
-							$finishd++;
+							$e['state'] = POOL_ESTATE_DONE;
+							$finished++;
 							break;
 						}
 					}
 				}
-				if ((time() - $start) > $this->_timeout_all) {
-					foreach ($this->_pool as &$entry) {
-						$entry['chttp']->_streamClose();
-						if ($entry['state'] == POOL_ESTATE_DEFAULT) {
-							$entry['state'] = POOL_ESTATE_TIMEOUT_IO;
+				if (time() > $limit) {
+					for ($i = 0; $i < $entries_in_pool; $i++) {
+						$e =& $this->_pool[$i];
+						$e['chttp']->_streamClose();
+						if ($e['state'] == POOL_ESTATE_DEFAULT) {
+							$e['state'] = POOL_ESTATE_TIMEOUT_IO;
 						}
 					}
-					break;
+					return;
 				}
 				if ($iosleep) {
 					usleep(CHTTP_IOSLEEP_USEC);
 				}
-			} while ($finishd != count($this->_pool));
+			} while ($finished != $entries_in_pool);
 		}
 	}
 
@@ -850,11 +857,6 @@ define('UT_GZIP_REPETITION', 500);
 
 define('UT_USER', 'user');
 define('UT_PASS', 'pass%=%pass');
-
-function __unittest__profile($in_id)
-{
-	array_push($profile, array('(1)', (microtime(TRUE) - $start)));
-}
 
 class CProf
 {
@@ -1218,6 +1220,7 @@ EOSYMBOL;
 		for ($i = 0; $i < $request; $i++) {
 			$pool->attach((new CHttp(ut_servermode_url(UT_SERVERMODE_DELAYED, "i={$i}"))));
 		}
+		// $pool->send(TRUE);
 		$pool->send(FALSE);
 		$responses = $pool->getFinishedRequests();
 		for ($i = 0; $i < $request; $i++) {
