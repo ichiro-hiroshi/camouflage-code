@@ -208,6 +208,9 @@ class CHttp
 		} else {
 			// network
 			$s = $this->getStatusLine();
+			if (!$s) {
+				return;
+			}
 			if (($s[1] == 200) && ($this->getBodyLength() > 0)) {
 				$this->_cacheUpdated = $this->_saveCache();
 			}
@@ -402,7 +405,11 @@ class CHttp
 	}
 
 	function getStatusLine() {
-		return explode(' ', $this->_statusLine, 3);
+		if ($this->_statusLine) {
+			return explode(' ', $this->_statusLine, 3);
+		} else {
+			return NULL;
+		}
 	}
 
 	function getResponseHeaders($in_require_hash = TRUE) {
@@ -1314,8 +1321,8 @@ $symbol = <<<EOSYMBOL
 EOSYMBOL;
 		$prof->rec($symbol);
 		$http = new CHttp($url);
-		$r = $http->getStatusLine();
-		if (!is_array($r)) {
+		$s = $http->getStatusLine();
+		if (!is_array($s)) {
 			$http->_DP('test (HTTP-10-1) failed.');
 		}
 		$r = $http->getResponseHeader('hoge');
