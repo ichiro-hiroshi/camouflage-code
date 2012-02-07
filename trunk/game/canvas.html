@@ -180,8 +180,13 @@ var gMap = {
 			callback();
 			return;
 		}
-		var animation = {frame : 5, spf : 16, mag : [1, 1.2, 1.5, 1.2, 1]};
+		var animation = {frame : 7, spf : 20, mag : []};
+		for (var i = 0; i < animation.frame; i++) {
+			animation.mag[i] = -1 / animation.frame / 2 * i * (i - animation.frame + 1) + 1;
+		}
+		/* start rect */
 		var s_r = self._xy2rect(in_x, in_y);
+		/* end rect */
 		var e_r = self._xy2rect(blank.x, blank.y);
 		var dx = Math.ceil((e_r.x1 - s_r.x1) / animation.frame);
 		var dy = Math.ceil((e_r.y1 - s_r.y1) / animation.frame);
@@ -189,10 +194,15 @@ var gMap = {
 		var repeat = (function() {return function(in_cnt) {
 			if (in_cnt < animation.frame) {
 				window.setTimeout(function() {
+					/*
+						(x2 + mag * w/2, y2 + mag * h/2) = (x1 + w/2 +dx, y1 + h/2 +dy)
+							---> (x2, y2) = (x1 + (1 - m) * w/2 +dx, y1 + (1 - m) * h/2 +dy)
+					*/
+					var mag = animation.mag[in_cnt];
 					self._showMiniCanvas(
-						(s_r.y1 + dy * in_cnt) + 'px',
-						(s_r.x1 + dx * in_cnt) + 'px',
-						animation.mag[in_cnt]
+						Math.ceil(s_r.y1 + (1 - mag) * s_r.w / 2 + dy * in_cnt) + 'px',
+						Math.ceil(s_r.x1 + (1 - mag) * s_r.h / 2 + dx * in_cnt) + 'px',
+						mag
 					);
 					if (in_cnt == 0) {
 						self._drawPieceOnData(n1, true);
@@ -263,6 +273,10 @@ var gMap = {
 			top = px2num(CONFIG.IMGTOP) + px2num(in_top) + 'px';
 			left = px2num(CONFIG.IMGLEFT) + px2num(in_left) + 'px';
 		}
+		this._mini_canvas.style.width  = Math.ceil(this._pszw * in_mag) + 'px';
+		this._mini_canvas.style.height = Math.ceil(this._pszh * in_mag) + 'px';
+		var shadow = Math.ceil(in_mag^4 + 1);
+		this._mini_canvas.style.boxShadow = '0px ' + shadow + 'px ' + shadow + 'px black';
 	},
 	_hideMiniCanvas : function() {
 		if (document.getElementById(this._mini_canvas.id)) {
