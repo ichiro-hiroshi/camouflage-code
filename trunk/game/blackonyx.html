@@ -1,0 +1,237 @@
+<script>
+
+var DEBUG = {
+	viewer : null,
+	init : function() {
+		var div = document.createElement('DIV');
+		with (div.style) {
+			marginLeft = '50%';
+			height = '89%';
+			overflowY = 'scroll';
+			color = 'white';
+			backgroundColor = 'black';
+			fontFamily = 'monospace';
+		}
+		document.body.appendChild(div);
+		this.viewer = div;
+	},
+	text : function(in_text) {
+		if (!this.viewer) {
+			return;
+		}
+		var div = document.createElement('DIV');
+		div.textContent = in_text;
+		this.viewer.insertBefore(div, this.viewer.firstChild);
+	},
+	obj : function(in_obj) {
+		if (!this.viewer) {
+			return;
+		}
+		for (var prop in in_obj) {
+			switch (typeof in_obj[prop]) {
+			case 'string' :
+			case 'number' :
+				this.text(prop + ' : ' + in_obj[prop]);
+				break;
+			default :
+				break;
+			}
+		}
+	}
+};
+
+var NODECTL = {
+	dirs : {
+		u : {
+			bit : 0x01,
+			dx  : 0,
+			dy  : -1
+		},
+		r : {
+			bit : 0x02,
+			dx  : 1,
+			dy  : 0
+		},
+		d : {
+			bit : 0x04,
+			dx  : 0,
+			dy  : 1
+		},
+		l : {
+			bit : 0x08,
+			dx  : -1,
+			dy  : 0
+		}
+	},
+	dydx2dir : function(in_dy, in_dx) {
+		for (var dir in this.dirs) {
+			if ((in_dy == this.dirs[dir].dy) && (in_dx == this.dirs[dir].dx)) {
+				return dir;
+			}
+		}
+	},
+	dydx2bit : function(in_dy, in_dx) {
+		return this.dirs[this.dydx2dir(in_dy, in_dx)].bit;
+	}
+};
+
+var MAPDATA = {
+	dat : [
+		'+-+-+-+',
+		'|@|@@@@',
+		'+@+-+-+',
+		'@@|@|@|',
+		'+-+-+@+',
+		'|@|@|@|',
+		'+-u-+@+',
+	],
+	value : function(in_y, in_x) {
+		if ((in_y < 0) || (this.dat.length - 1 < in_y)) {
+			return '@';
+		}
+		if ((in_x < 0) || (this.dat[in_y].length - 1 < in_x)) {
+			return '@';
+		}
+		return this.dat[in_y].substr(in_x, 1);
+	}
+};
+
+window.addEventListener('keydown', function(in_e) {
+	if (!DEBUG.viewer) {
+		DEBUG.init();
+	}
+	DEBUG.text(in_e.keyCode);
+	gMap.updatePos(in_e.keyCode);
+	gMap.debugDisp();
+}, false);
+
+/*
+                        (y * 2 - 1, x * 2)
+    (y * 2, x * 2 - 1)  (y * 2,     x * 2)  (y * 2, x * 2 + 1)
+                        (y * 2 + 1, x * 2)
+*/
+
+var gMap = {
+	dat : [
+	/*
+		[0, 0, 0, 0, ... ],
+		[0, 0, 0, 0, ... ],
+		...
+	*/
+	],
+	pos : {
+	/*
+		x : 0,
+		y : 0,
+		dx : 0,
+		dy : 0
+	*/
+	},
+	debugDisp : function() {
+		for (var y = this.dat.length - 1; y >= 0; y--) {
+			var text = '';
+			for (var x = 0; x < this.dat[y].length; x++) {
+				if ((y == this.pos.y) && (x == this.pos.x)) {
+					text += '[' + NODECTL.dydx2dir(this.pos.dy, this.pos.dx) + ']';
+				} else {
+					text += '[ ]';
+				}
+			}
+			DEBUG.text(text);
+		}
+	},
+	makeView : function() {
+		// gradation !!
+	},
+	checkFront : function() {
+		var y = this.pos.y + this.pos.dy;
+		var x = this.pos.x + this.pos.dx;
+		if ((y < 0) || (this.dat.length - 1 < y)) {
+			return false;
+		}
+		if ((x < 0) || (this.dat[y].length - 1 < x)) {
+			return false;
+		}
+		if (this.dat[this.pos.y][this.pos.x] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
+			return true;
+		} else {
+			return false;
+		}
+	},
+	updatePos : function(in_keycode) {
+		switch (in_keycode) {
+		/* go ahead */
+		case 38 :
+			if (!this.checkFront()) {
+				return;
+			} else {
+				this.pos.y += this.pos.dy;
+				this.pos.x += this.pos.dx;
+			}
+			break;
+		/* turn left */
+		case 37 :
+			var dir = {
+				u : 'l',
+				r : 'u',
+				d : 'r',
+				l : 'd'
+			}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+			this.pos.dy = NODECTL.dirs[dir].dy;
+			this.pos.dx = NODECTL.dirs[dir].dx;
+			break;
+		/* turn right */
+		case 39 :
+			var dir = {
+				u : 'r',
+				r : 'd',
+				d : 'l',
+				l : 'u'
+			}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+			this.pos.dy = NODECTL.dirs[dir].dy;
+			this.pos.dx = NODECTL.dirs[dir].dx;
+			break;
+		default :
+			break;
+		}
+	},
+};
+
+for (var y = 0; y < (MAPDATA.dat.length + 1) / 2; y++) {
+	gMap.dat[y] = [];
+	for (var x = 0; x < (MAPDATA.dat[y].length + 1) / 2; x++) {
+		var arround = {
+			c : {y : y * 2,     x : x * 2    },
+			u : {y : y * 2 - 1, x : x * 2    },
+			r : {y : y * 2,     x : x * 2 + 1},
+			d : {y : y * 2 + 1, x : x * 2    },
+			l : {y : y * 2,     x : x * 2 - 1}
+		};
+		for (var dir in arround) {
+			var value = MAPDATA.value(arround[dir].y, arround[dir].x);
+			switch (value) {
+			case 'u' :
+			case 'r' :
+			case 'd' :
+			case 'l' :
+				/* arround.[c] */
+				gMap.pos.y = y;
+				gMap.pos.x = x;
+				gMap.pos.dy = NODECTL.dirs[value].dy;
+				gMap.pos.dx = NODECTL.dirs[value].dx;
+				break;
+			case '|' :
+			case '-' :
+				/* arround.[urdl] */
+				gMap.dat[y][x] |= NODECTL.dirs[dir].bit;
+				break;
+			case '@' :
+			default :
+				/* arround.[urdl] */
+				break;
+			}
+		}
+	}
+}
+
+</script>
