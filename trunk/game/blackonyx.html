@@ -76,10 +76,10 @@ var NODECTL = {
 };
 
 var gCanvas = {
-	rows : 5,
+	rows : 3,
 	cols : 3,
 	canvas : null,
-	canvasH : 300,
+	canvasH : 150,
 	canvasW : 400,
 	floor1 : [],
 	floor2 : [],
@@ -186,25 +186,6 @@ var gCanvas = {
 		this.init_front(point_table);
 		this.init_side(point_table);
 		document.body.appendChild(this.canvas);
-		var ctx = this.canvas.getContext('2d');
-		for (var row = 0; row < this.floor1.length; row++) {
-			for (var col = 0; col < this.floor1[row].length; col++) {
-				var depth = Math.ceil(255 * (row + 1) / this.floor1.length);
-				drawPolygon(ctx, this.floor1[row][col], 'rgba(0, 0, ' + depth + ', 1)', 'rgba(0, 0, 0, 1)');
-				drawPolygon(ctx, this.floor2[row][col], 'rgba(0, 0, ' + depth + ', 1)', 'rgba(0, 0, 0, 1)');
-			}
-		}
-		for (var row = 0; row < this.side.length; row++) {
-			for (var col = 0; col < this.side[row].length; col++) {
-				var depth = Math.ceil(255 * (row + 1) / this.side.length);
-				drawPolygon(ctx, this.side[row][col], 'rgba(0, 0, ' + depth + ', 1)', 'rgba(0, 0, 0, 1)');
-			}
-		}
-		for (var row = 0; row < this.front.length; row++) {
-			for (var col = 0; col < this.front[row].length; col++) {
-//				drawPolygon(ctx, this.front[row][col], null, 'rgba(0, 0, 0, 1)');
-			}
-		}
 	},
 	drawWall : function(in_front, in_side) {
 		if (this.rows != in_front.length) {
@@ -220,15 +201,31 @@ var gCanvas = {
 			return;
 		}
 		var ctx = this.canvas.getContext('2d');
+		var black = 'rgba(0, 0, 0, 1)';
+		// background
+		ctx.fillStyle = black;
+		ctx.fillRect(0, 0, this.canvasW, this.canvasH);
+		// floor
+		for (var row = 0; row < this.floor1.length; row++) {
+			var depth = Math.ceil(255 * (row + 1) / this.floor1.length);
+			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
+			for (var col = 0; col < this.floor1[row].length; col++) {
+				drawPolygon(ctx, this.floor1[row][col], bgcolor, black);
+				drawPolygon(ctx, this.floor2[row][col], bgcolor, black);
+			}
+		}
+		// wall
 		for (var row = 0; row < this.rows; row++) {
+			var depth = Math.ceil(255 * (row + 1) / this.rows);
+			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
 			for (var col = 0; col < this.cols; col++) {
 				if (in_front[row][col]) {
-					drawPolygon(ctx, this.front[row][col]);
+					drawPolygon(ctx, this.front[row][col], bgcolor, black);
 				}
 			}
 			for (var col = 0; col < this.cols + 1; col++) {
 				if (in_side[row][col]) {
-					drawPolygon(ctx, this.side[row][col]);
+					drawPolygon(ctx, this.side[row][col], bgcolor, black);
 				}
 			}
 		}
@@ -271,68 +268,182 @@ var gMap = {
 		dy : 0
 	*/
 	},
-	debugDisp : function() {
-		for (var y = this.dat.length - 1; y >= 0; y--) {
-			var text = '';
-			for (var x = 0; x < this.dat[y].length; x++) {
-				if ((y == this.pos.y) && (x == this.pos.x)) {
-					text += '[' + NODECTL.dydx2dir(this.pos.dy, this.pos.dx) + ']';
-				} else {
-					text += '[ ]';
-				}
-			}
-			DEBUG.text(text);
+	inMap : function(in_y, in_x) {
+		if ((in_y < 0) || (this.dat.length - 1 < in_y)) {
+			return false;
 		}
+		if ((in_x < 0) || (this.dat[in_y].length - 1 < in_x)) {
+			return false;
+		}
+		return true;
+	},
+	makeFloorTbl : function(in_rows, in_cols) {
+		var floor_table = [];
+		switch (NODECTL.dydx2dir(this.pos.dy, this.pos.dx)) {
+		case 'u' :
+			/*
+				(dy, dx) = (-1, 0)
+				â†“ : this.pos.y - (in_rows - 1), ..., this.pos.y
+				â†’ : this.pos.x - (in_cols - 1) / 2, ..., this.pos.x + (in_cols - 1) / 2
+			*/
+		case 'd' :
+			/*
+				(dy, dx) = (1, 0)
+				â†‘ : this.pos.y + (in_rows - 1), ..., this.pos.y
+				â† : this.pos.x + (in_cols - 1) / 2, ..., this.pos.x - (in_cols - 1) / 2
+			*/
+			var row = this.pos.y + (in_rows - 1) * this.pos.dy;
+			var cntr = in_rows;
+			while (cntr-- > 0) {
+				var tmp = [];
+				var col = this.pos.x + (in_cols - 1) / 2 * this.pos.dy;
+				var cntc = in_cols;
+				while (cntc-- > 0) {
+					tmp.push([row, col]);
+					col -= this.pos.dy;
+				}
+				floor_table.push(tmp);
+				row -= this.pos.dy;
+			}
+			break;
+		case 'r' :
+			/*
+				(dy, dx) = (0, 1)
+				â† : this.pos.x + (in_cols - 1), ..., this.pos.x
+				â†“ : this.pos.y - (in_rows - 1) / 2, ..., this.pos.y + (in_rows - 1) / 2
+			*/
+		case 'l' :
+			/*
+				(dy, dx) = (0, -1)
+				â†’ : this.pos.x - (in_cols - 1), ..., this.pos.x
+				â†‘ : this.pos.y + (in_rows - 1) / 2, ..., this.pos.y - (in_rows - 1) / 2
+			*/
+			var col = this.pos.x + (in_cols - 1) * this.pos.dx;
+			var cntr = in_rows;
+			while (cntr-- > 0) {
+				var tmp = [];
+				var row = this.pos.y - (in_rows - 1) / 2 * this.pos.dx;
+				var cntc = in_cols;
+				while (cntc-- > 0) {
+					tmp.push([row, col]);
+					row += this.pos.dx;
+				}
+				floor_table.push(tmp);
+				col -= this.pos.dx;
+			}
+			break;
+		default :
+			break;
+		}
+		return floor_table;
 	},
 	makeWallTbl : function(in_rows, in_cols) {
 		/*
 			returns this object :
 			{
 				// (in_rows) entries
-				side : {
+				side : [
 					[ (in_cols + 1) entries ],
 					[ (in_cols + 1) entries ],
 					...
-				},
+				],
 				// (in_rows) entries
-				front : {
+				front : [
 					[ (in_cols) entries ],
 					[ (in_cols) entries ],
 					...
+				]
+			}
+			entry :
+				0 : nothing
+				1 : wall
+		*/
+		var floor_table = this.makeFloorTbl(in_rows, in_cols);
+		var ret = {
+			side : [],
+			front : []
+		};
+		// side
+		var lr = {
+			u : ['l', 'r'],
+			r : ['u', 'd'],
+			d : ['r', 'l'],
+			l : ['d', 'u']
+		}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+		for (var row = 0; row < floor_table.length; row++) {
+			var tmp = [];
+			for (var col = 0; col < floor_table[row].length; col++) {
+				// should be considered oneside-wall !!
+				if (tmp.length > 0) {
+					// remove right-wall
+					tmp.pop();
+				}
+				var pos = floor_table[row][col];
+				if (this.inMap(pos[0], pos[1])) {
+					// left-wall, right-wall
+					for (var i = 0; i < lr.length; i++) {
+						if (this.dat[pos[0]][pos[1]] & NODECTL.dirs[lr[i]].bit) {
+							tmp.push(0);
+						} else {
+							tmp.push(1);
+						}
+					}
+				} else {
+					tmp.push(1);
+					tmp.push(1);
 				}
 			}
+			ret.side.push(tmp);
+		}
+		// front
+		for (var row = 0; row < floor_table.length; row++) {
+			var tmp = [];
+			for (var col = 0; col < floor_table[row].length; col++) {
+				var pos = floor_table[row][col];
+				if (this.inMap(pos[0], pos[1])) {
+					if (this.dat[pos[0]][pos[1]] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
+						tmp.push(0);
+					} else {
+						tmp.push(1);
+					}
+				} else {
+					tmp.push(1);
+				}
+			}
+			ret.front.push(tmp);
+		}
+		/*
+		for (var y = floor_table.length - 1; y >= 0; y--) {
+			var text = '';
+			for (var x = 0; x < floor_table[y].length; x++) {
+				var dat = floor_table[y][x];
+				text += '(' + dat[0] + ',' + dat[1] + ')';
+			}
+			DEBUG.text(text);
+		}
 		*/
+		return ret;
 	},
-	makeView : function() {
-		var rows = 3;
-		var cols = 3;
-		var canvas_h = 400;
-		var canvas_w = 600;
+	updateView : function() {
+		var rows = gCanvas.rows;
+		var cols = gCanvas.cols;
 		var wall = this.makeWallTbl(rows, cols);
-		// ã‰º•`‰æ
-		// front[0] •`‰æ, side[0] •`‰æ, ...
+		gCanvas.drawWall(wall.front, wall.side);
 	},
 	checkFront : function() {
-		var y = this.pos.y + this.pos.dy;
-		var x = this.pos.x + this.pos.dx;
-		if ((y < 0) || (this.dat.length - 1 < y)) {
-			return false;
+		if (this.inMap(this.pos.y + this.pos.dy, this.pos.x + this.pos.dx)) {
+			if (this.dat[this.pos.y][this.pos.x] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
+				return true;
+			}
 		}
-		if ((x < 0) || (this.dat[y].length - 1 < x)) {
-			return false;
-		}
-		if (this.dat[this.pos.y][this.pos.x] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
-			return true;
-		} else {
-			return false;
-		}
+		return false;
 	},
 	updatePos : function(in_keycode) {
 		switch (in_keycode) {
 		/* go ahead */
 		case 38 :
 			if (!this.checkFront()) {
-				return;
+				return false;
 			} else {
 				this.pos.y += this.pos.dy;
 				this.pos.x += this.pos.dx;
@@ -340,41 +451,50 @@ var gMap = {
 			break;
 		/* turn left */
 		case 37 :
-			var dir = {
+		/* turn right */
+		case 39 :
+			var turn = [];
+			turn[37] = {
 				u : 'l',
 				r : 'u',
 				d : 'r',
 				l : 'd'
-			}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
-			this.pos.dy = NODECTL.dirs[dir].dy;
-			this.pos.dx = NODECTL.dirs[dir].dx;
-			break;
-		/* turn right */
-		case 39 :
-			var dir = {
+			};
+			turn[39] = {
 				u : 'r',
 				r : 'd',
 				d : 'l',
 				l : 'u'
-			}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+			};
+			var dir = turn[in_keycode][NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
 			this.pos.dy = NODECTL.dirs[dir].dy;
 			this.pos.dx = NODECTL.dirs[dir].dx;
 			break;
 		default :
 			break;
 		}
+		return true;
 	},
 };
 
+//var gDebug = true;
+var gDebug = false;
+
 window.addEventListener('load', function(in_e) {
-//	DEBUG.init();
+	if (gDebug) {
+		DEBUG.init();
+	}
 	gCanvas.init();
+	gMap.updateView();
 }, false);
 
 window.addEventListener('keydown', function(in_e) {
-	DEBUG.text(in_e.keyCode);
-	gMap.updatePos(in_e.keyCode);
-	gMap.debugDisp();
+	if (gMap.updatePos(in_e.keyCode)) {
+		DEBUG.text('keydown : ' + in_e.keyCode);
+		gMap.updateView();
+	} else {
+		DEBUG.text('stay');
+	}
 }, false);
 
 var MAPDATA = {
