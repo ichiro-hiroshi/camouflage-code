@@ -76,23 +76,26 @@ var NODECTL = {
 };
 
 var gCanvas = {
-	rows : 3,
-	cols : 3,
+	rows : 5,
+	cols : 5,
 	canvas : null,
 	canvasH : 150,
-	canvasW : 400,
+	canvasW : 600,
 	floor1 : [],
 	floor2 : [],
 	/*
+		e.g. 3x3
 		 - - -  : front[0]
 		| | | | : side[0]
 		 - - -  : front[1]
 		| | | | : side[1]
 		 - - -  : front[2]
 		| | | | : side[2]
+		 - - -  : site
 	*/
 	front : [],
 	side : [],
+	site : null,
 	y2x : function(in_start_x, in_y) {
 		/*
 			(y1, x1) = (0, in_start_x)
@@ -166,6 +169,16 @@ var gCanvas = {
 		}
 		this.front.reverse();
 	},
+	init_site : function(point_table) {
+		this.site = [];
+		for (var col = 0; col < point_table[0].length - 1; col++) {
+			var p1 = point_table[0][col];
+			var p2 = point_table[0][col + 1];
+			var p3 = [(this.canvasH - p2[0]), p2[1]];
+			var p4 = [(this.canvasH - p1[0]), p1[1]];
+			this.site.push([p1, p2, p3, p4]);
+		}
+	},
 	init_side : function(point_table) {
 		for (var row = 0; row < point_table.length - 1; row++) {
 			this.side[row] = [];
@@ -184,6 +197,7 @@ var gCanvas = {
 		var point_table = this.pointTable();
 		this.init_floor(point_table);
 		this.init_front(point_table);
+		this.init_site(point_table);
 		this.init_side(point_table);
 		document.body.appendChild(this.canvas);
 	},
@@ -202,10 +216,10 @@ var gCanvas = {
 		}
 		var ctx = this.canvas.getContext('2d');
 		var black = 'rgba(0, 0, 0, 1)';
-		// background
+		/* background */
 		ctx.fillStyle = black;
 		ctx.fillRect(0, 0, this.canvasW, this.canvasH);
-		// floor
+		/* floor */
 		for (var row = 0; row < this.floor1.length; row++) {
 			var depth = Math.ceil(255 * (row + 1) / this.floor1.length);
 			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
@@ -214,7 +228,7 @@ var gCanvas = {
 				drawPolygon(ctx, this.floor2[row][col], bgcolor, black);
 			}
 		}
-		// wall
+		/* wall */
 		for (var row = 0; row < this.rows; row++) {
 			var depth = Math.ceil(255 * (row + 1) / this.rows);
 			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
@@ -227,6 +241,51 @@ var gCanvas = {
 				if (in_side[row][col]) {
 					drawPolygon(ctx, this.side[row][col], bgcolor, black);
 				}
+			}
+		}
+		/*
+			side	site	out_site
+			+-------+-------+-------
+			0		-		-
+			1		0		n + 1
+			2		1		n + 1
+			-		2		false
+			3		3		n
+			4		4		n
+			5		-		-
+			+-------+-------+-------
+			0		-		-
+			1		0		n + 1
+			-		1		false
+			2		-		-
+			-		2		false
+			3		3		n
+			4		-		-
+			+-------+-------+-------
+		*/
+		if (this.site.length % 2 == 1) {
+			var l_start = (this.site.length - 1) / 2 - 1;
+			var r_start = (this.site.length - 1) / 2 + 1;
+		} else {
+			var l_start = this.site.length / 2 - 2;
+			var r_start = this.site.length / 2 + 1;
+		}
+		var site_out = false;
+		for (var col = l_start; col >= 0; col--) {
+			if (in_side[this.rows - 1][col + 1]) {
+				site_out = true;
+			}
+			if (site_out) {
+				drawPolygon(ctx, this.site[col], black, black);
+			}
+		}
+		var site_out = false;
+		for (var col = r_start; col < this.site.length; col++) {
+			if (in_side[this.rows - 1][col]) {
+				site_out = true;
+			}
+			if (site_out) {
+				drawPolygon(ctx, this.site[col], black, black);
 			}
 		}
 	},
@@ -278,6 +337,10 @@ var gMap = {
 		return true;
 	},
 	makeFloorTbl : function(in_rows, in_cols) {
+		if ((in_rows % 2 != 1) || (in_cols % 2 != 1)) {
+			alert('invalid rows or cols');
+			return [];
+		}
 		var floor_table = [];
 		switch (NODECTL.dydx2dir(this.pos.dy, this.pos.dx)) {
 		case 'u' :
@@ -355,15 +418,15 @@ var gMap = {
 				]
 			}
 			entry :
-				0 : nothing
-				1 : wall
+				false : nothing
+				true  : wall
 		*/
 		var floor_table = this.makeFloorTbl(in_rows, in_cols);
 		var ret = {
 			side : [],
 			front : []
 		};
-		// side
+		/* side */
 		var lr = {
 			u : ['l', 'r'],
 			r : ['u', 'd'],
@@ -373,41 +436,41 @@ var gMap = {
 		for (var row = 0; row < floor_table.length; row++) {
 			var tmp = [];
 			for (var col = 0; col < floor_table[row].length; col++) {
-				// should be considered oneside-wall !!
+				/* should be considered oneside-wall !! */
 				if (tmp.length > 0) {
-					// remove right-wall
+					/* remove right-wall */
 					tmp.pop();
 				}
 				var pos = floor_table[row][col];
 				if (this.inMap(pos[0], pos[1])) {
-					// left-wall, right-wall
+					/* left-wall, right-wall */
 					for (var i = 0; i < lr.length; i++) {
 						if (this.dat[pos[0]][pos[1]] & NODECTL.dirs[lr[i]].bit) {
-							tmp.push(0);
+							tmp.push(false);
 						} else {
-							tmp.push(1);
+							tmp.push(true);
 						}
 					}
 				} else {
-					tmp.push(1);
-					tmp.push(1);
+					tmp.push(true);
+					tmp.push(true);
 				}
 			}
 			ret.side.push(tmp);
 		}
-		// front
+		/* front */
 		for (var row = 0; row < floor_table.length; row++) {
 			var tmp = [];
 			for (var col = 0; col < floor_table[row].length; col++) {
 				var pos = floor_table[row][col];
 				if (this.inMap(pos[0], pos[1])) {
 					if (this.dat[pos[0]][pos[1]] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
-						tmp.push(0);
+						tmp.push(false);
 					} else {
-						tmp.push(1);
+						tmp.push(true);
 					}
 				} else {
-					tmp.push(1);
+					tmp.push(true);
 				}
 			}
 			ret.front.push(tmp);
@@ -425,9 +488,7 @@ var gMap = {
 		return ret;
 	},
 	updateView : function() {
-		var rows = gCanvas.rows;
-		var cols = gCanvas.cols;
-		var wall = this.makeWallTbl(rows, cols);
+		var wall = this.makeWallTbl(gCanvas.rows, gCanvas.cols);
 		gCanvas.drawWall(wall.front, wall.side);
 	},
 	checkFront : function() {
@@ -499,13 +560,19 @@ window.addEventListener('keydown', function(in_e) {
 
 var MAPDATA = {
 	dat : [
-		'+-+-+-+',
-		'|@|@@@@',
-		'+@+-+-+',
-		'@@|@|@|',
-		'+-+-+@+',
-		'|@|@|@|',
-		'+-u-+@+',
+		'+-+@+-+@+-+',
+		'|@|@|@|@|@|',
+		'+@+-+@+-+@+',
+		'|@@@@@@@@@@',
+		'+-+-+-+-+-+',
+		'|@|@@@@@|@@',
+		'+@+-+-+-+-+',
+		'@@|@@@|@@@|',
+		'+@+-+-+-+-+',
+		'|@@@|@@@@@|',
+		'+-+-+@+-+@+',
+		'|@@@|@|@@@|',
+		'+-u-+@+-+-+',
 	],
 	value : function(in_y, in_x) {
 		if ((in_y < 0) || (this.dat.length - 1 < in_y)) {
