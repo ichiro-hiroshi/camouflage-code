@@ -76,11 +76,11 @@ var NODECTL = {
 };
 
 var gCanvas = {
-	rows : 5,
-	cols : 5,
+	rows : 3,
+	cols : 3,
 	canvas : null,
 	canvasH : 150,
-	canvasW : 600,
+	canvasW : 400,
 	floor1 : [],
 	floor2 : [],
 	/*
@@ -96,6 +96,7 @@ var gCanvas = {
 	front : [],
 	side : [],
 	site : null,
+	depth : null,
 	y2x : function(in_start_x, in_y) {
 		/*
 			(y1, x1) = (0, in_start_x)
@@ -192,13 +193,20 @@ var gCanvas = {
 		}
 		this.side.reverse();
 	},
+	init_depth : function() {
+		this.depth = [];
+		for (var i = 0; i <= this.rows; i++) {
+			this.depth.push(Math.ceil(255 * i / this.rows));
+		}
+	},
 	init : function() {
-		this.init_canvas();
 		var point_table = this.pointTable();
 		this.init_floor(point_table);
 		this.init_front(point_table);
 		this.init_site(point_table);
 		this.init_side(point_table);
+		this.init_depth();
+		this.init_canvas();
 		document.body.appendChild(this.canvas);
 	},
 	drawWall : function(in_front, in_side) {
@@ -221,25 +229,26 @@ var gCanvas = {
 		ctx.fillRect(0, 0, this.canvasW, this.canvasH);
 		/* floor */
 		for (var row = 0; row < this.floor1.length; row++) {
-			var depth = Math.ceil(255 * (row + 1) / this.floor1.length);
-			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
+			var color1 = 'rgba(' + this.depth[row] + ', 0, 0, 1)';
+			var color2 = 'rgba(' + this.depth[row + 1] + ', 0, 0, 1)';
 			for (var col = 0; col < this.floor1[row].length; col++) {
-				drawPolygon(ctx, this.floor1[row][col], bgcolor, black);
-				drawPolygon(ctx, this.floor2[row][col], bgcolor, black);
+				drawPolygonGradient(ctx, this.floor1[row][col], 'T', color1, color2, black);
+				drawPolygonGradient(ctx, this.floor2[row][col], 'B', color1, color2, black);
 			}
 		}
 		/* wall */
 		for (var row = 0; row < this.rows; row++) {
-			var depth = Math.ceil(255 * (row + 1) / this.rows);
-			var bgcolor = 'rgba(0, 0, ' + depth + ', 1)';
+			var color1 = 'rgba(' + this.depth[row] + ', 0, 0, 1)';
+			var color2 = 'rgba(' + this.depth[row + 1] + ', 0, 0, 1)';
 			for (var col = 0; col < this.cols; col++) {
 				if (in_front[row][col]) {
-					drawPolygon(ctx, this.front[row][col], bgcolor, black);
+					drawPolygon(ctx, this.front[row][col], color1, black);
 				}
 			}
 			for (var col = 0; col < this.cols + 1; col++) {
 				if (in_side[row][col]) {
-					drawPolygon(ctx, this.side[row][col], bgcolor, black);
+					var dir = col < (this.cols + 1) / 2 ? 'L' : 'R';
+					drawPolygonGradient(ctx, this.side[row][col], dir, color1, color2, black);
 				}
 			}
 		}
@@ -309,6 +318,55 @@ function drawPolygon(ctx, point_list, color, bordercolor)
 		ctx.fillStyle = color;
 		ctx.fill();
 	}
+}
+
+function drawPolygonGradient(ctx, point_list, dir, color1, color2, bordercolor)
+{
+	ctx.beginPath();
+	var edge = {
+		L : Number.MAX_VALUE,
+		T : Number.MAX_VALUE,
+		R : 0,
+		B : 0
+	};
+	for (var i = 0; i < point_list.length; i++) {
+		var p = point_list[i];
+		if (i == 0) {
+			ctx.moveTo(p[1], p[0]);
+		} else {
+			ctx.lineTo(p[1], p[0]);
+		}
+		edge.L = (p[1] < edge.L) ? p[1] : edge.L;
+		edge.T = (p[0] < edge.T) ? p[0] : edge.T;
+		edge.R = (edge.R < p[1]) ? p[1] : edge.R;
+		edge.B = (edge.B < p[0]) ? p[0] : edge.B;
+	}
+	ctx.closePath();
+	ctx.strokeStyle = bordercolor;
+	ctx.stroke();
+	var pos = {
+		L : {
+			s : [0, edge.R],
+			e : [0, edge.L]
+		},
+		T : {
+			s : [edge.B, 0],
+			e : [edge.T, 0]
+		},
+		R : {
+			s : [0, edge.L],
+			e : [0, edge.R]
+		},
+		B : {
+			s : [edge.T, 0],
+			e : [edge.B, 0]
+		}
+	}[dir];
+	var gradient = ctx.createLinearGradient(pos.s[1], pos.s[0], pos.e[1], pos.e[0]);
+	gradient.addColorStop(0, color1);
+	gradient.addColorStop(1, color2);
+	ctx.fillStyle = gradient;
+	ctx.fill();
 }
 
 var gMap = {
