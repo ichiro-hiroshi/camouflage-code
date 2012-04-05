@@ -871,12 +871,24 @@ var {$APP_PREFIX} = {
 		}
 	},
 	send1 : function(in_data, in_cb_send) {
+		/*
+			client : send soon
+			server : overwrite
+		*/
 		return this._send('{$URL_SEND1}', in_data, in_cb_send);
 	},
 	send2 : function(in_data, in_cb_send) {
+		/*
+			client : wait response before sending
+			server : overwrite
+		*/
 		return this._send_1by1('{$URL_SEND1}', in_data, in_cb_send);
 	},
 	send3 : function(in_data, in_cb_send) {
+		/*
+			client : wait response before sending
+			server : wait other's reading
+		*/
 		return this._send_1by1('{$URL_SEND2}', in_data, in_cb_send);
 	},
 	_poll : function(in_cb_poll) {
