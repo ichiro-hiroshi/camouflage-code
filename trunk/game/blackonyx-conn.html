@@ -1,0 +1,813 @@
+<script type='text/javascript' src='ConnJS.php'></script>
+<script>
+
+var DEBUG = {
+	viewer : null,
+	init : function() {
+		var div = document.createElement('DIV');
+		with (div.style) {
+			marginLeft = '50%';
+			height = '50%';
+			overflowY = 'scroll';
+			color = 'white';
+			backgroundColor = 'black';
+			fontFamily = 'monospace';
+		}
+		document.body.appendChild(div);
+		this.viewer = div;
+	},
+	text : function(in_text) {
+		if (!this.viewer) {
+			return;
+		}
+		var div = document.createElement('DIV');
+		div.textContent = in_text;
+		this.viewer.insertBefore(div, this.viewer.firstChild);
+	},
+	obj : function(in_obj) {
+		if (!this.viewer) {
+			return;
+		}
+		for (var prop in in_obj) {
+			switch (typeof in_obj[prop]) {
+			case 'string' :
+			case 'number' :
+				this.text(prop + ' : ' + in_obj[prop]);
+				break;
+			default :
+				break;
+			}
+		}
+	}
+};
+
+var NODECTL = {
+	dirs : {
+		u : {
+			bit : 0x01,
+			dy  : -1,
+			dx  : 0
+		},
+		r : {
+			bit : 0x02,
+			dy  : 0,
+			dx  : 1
+		},
+		d : {
+			bit : 0x04,
+			dy  : 1,
+			dx  : 0
+		},
+		l : {
+			bit : 0x08,
+			dy  : 0,
+			dx  : -1
+		}
+	},
+	dydx2dir : function(in_dy, in_dx) {
+		for (var dir in this.dirs) {
+			if ((in_dy == this.dirs[dir].dy) && (in_dx == this.dirs[dir].dx)) {
+				return dir;
+			}
+		}
+	},
+	dydx2bit : function(in_dy, in_dx) {
+		return this.dirs[this.dydx2dir(in_dy, in_dx)].bit;
+	}
+};
+
+var gCanvas = {
+	rows : 3,
+	cols : 3,
+	canvas : null,
+	canvasH : 150,
+	canvasW : 400,
+	floor1 : [],
+	floor2 : [],
+	/*
+		e.g. 3x3
+		 - - -  : front[0]
+		| | | | : side[0]
+		 - - -  : front[1]
+		| | | | : side[1]
+		 - - -  : front[2]
+		| | | | : side[2]
+		 - - -  : site
+	*/
+	front : [],
+	side : [],
+	site : null,
+	depth : null,
+	y2x : function(in_start_x, in_y) {
+		/*
+			(y1, x1) = (0, in_start_x)
+			(y2, x2) = (canvasH, canvasW - in_start_x)
+			---
+			y = a * (x - b)
+			a = y / (x - b) = canvasH / (canvasW - in_start_x * 2)
+		*/
+		return in_y * (this.canvasW - in_start_x * 2) / this.canvasH + in_start_x;
+	},
+	init_canvas : function() {
+		this.canvas = document.createElement('CANVAS');
+		this.canvas.height = this.canvasH;
+		this.canvas.width = this.canvasW;
+	},
+	pointTable : function() {
+		var _r1 = 2 / 3;
+		var _r2 = 1 / 3;
+		var cell_w = this.canvasW / this.cols;
+		var point_table = [];
+		for (var row = 0; row <= this.rows; row++) {
+			var tmp = [];
+			var y = (1 - Math.pow(_r1, row)) * (this.canvasH * _r2);
+			for (var col = 0; col <= this.cols; col++) {
+				var start_x = cell_w * col;
+				var x = this.y2x(start_x, y);
+				tmp.push([y, x]);
+			}
+			point_table.push(tmp);
+		}
+		/*
+		for (var row = 0; row < point_table.length; row++) {
+			for (var col = 0; col < point_table[row].length; col++) {
+				var point = point_table[row][col];
+				DEBUG.text('(' + point[0] + ',' + point[1] + ')');
+			}
+		}
+		*/
+		return point_table;
+	},
+	init_floor : function(point_table) {
+		for (var row = 0; row < point_table.length - 1; row++) {
+			this.floor1[row] = [];
+			this.floor2[row] = [];
+			for (var col = 0; col < point_table[row].length - 1; col++) {
+				var p11 = point_table[row][col];
+				var p12 = point_table[row][col + 1];
+				var p13 = point_table[row + 1][col + 1];
+				var p14 = point_table[row + 1][col];
+				this.floor1[row].push([p11, p12, p13, p14]);
+				var p21 = [(this.canvasH - p11[0]), p11[1]];
+				var p22 = [(this.canvasH - p12[0]), p12[1]];
+				var p23 = [(this.canvasH - p13[0]), p13[1]];
+				var p24 = [(this.canvasH - p14[0]), p14[1]];
+				this.floor2[row].push([p21, p22, p23, p24]);
+			}
+		}
+		this.floor1.reverse();
+		this.floor2.reverse();
+	},
+	init_front : function(point_table) {
+		for (var row = 1; row < point_table.length; row++) {
+			this.front[row - 1] = [];
+			for (var col = 0; col < point_table[row].length - 1; col++) {
+				var p1 = point_table[row][col];
+				var p2 = point_table[row][col + 1];
+				var p3 = [(this.canvasH - p2[0]), p2[1]];
+				var p4 = [(this.canvasH - p1[0]), p1[1]];
+				this.front[row - 1].push([p1, p2, p3, p4]);
+			}
+		}
+		this.front.reverse();
+	},
+	init_site : function(point_table) {
+		this.site = [];
+		for (var col = 0; col < point_table[0].length - 1; col++) {
+			var p1 = point_table[0][col];
+			var p2 = point_table[0][col + 1];
+			var p3 = [(this.canvasH - p2[0]), p2[1]];
+			var p4 = [(this.canvasH - p1[0]), p1[1]];
+			this.site.push([p1, p2, p3, p4]);
+		}
+	},
+	init_side : function(point_table) {
+		for (var row = 0; row < point_table.length - 1; row++) {
+			this.side[row] = [];
+			for (var col = 0; col < point_table[row].length; col++) {
+				var p1 = point_table[row][col];
+				var p2 = point_table[row + 1][col];
+				var p3 = [(this.canvasH - p2[0]), p2[1]];
+				var p4 = [(this.canvasH - p1[0]), p1[1]];
+				this.side[row].push([p1, p2, p3, p4]);
+			}
+		}
+		this.side.reverse();
+	},
+	init_depth : function() {
+		this.depth = [];
+		for (var i = 0; i <= this.rows; i++) {
+			this.depth.push(Math.ceil(255 * i / this.rows));
+		}
+	},
+	init : function() {
+		var point_table = this.pointTable();
+		this.init_floor(point_table);
+		this.init_front(point_table);
+		this.init_site(point_table);
+		this.init_side(point_table);
+		this.init_depth();
+		this.init_canvas();
+		document.body.appendChild(this.canvas);
+	},
+	drawWall : function(in_front, in_side, in_obj) {
+		if (this.rows != in_front.length) {
+			return;
+		}
+		if (this.rows != in_side.length) {
+			return;
+		}
+		if (this.cols != in_front[0].length) {
+			return;
+		}
+		if (this.cols + 1 != in_side[0].length) {
+			return;
+		}
+		var ctx = this.canvas.getContext('2d');
+		var black = 'rgba(0, 0, 0, 1)';
+		/* background */
+		ctx.fillStyle = black;
+		ctx.fillRect(0, 0, this.canvasW, this.canvasH);
+		/* (1) floor */
+		for (var row = 0; row < this.floor1.length; row++) {
+			var color1 = 'rgba(0, 0, ' + this.depth[row] + ', 1)';
+			var color2 = 'rgba(0, 0, ' + this.depth[row + 1] + ', 1)';
+			for (var col = 0; col < this.floor1[row].length; col++) {
+				drawPolygonGradient(ctx, this.floor1[row][col], 'T', color1, color2, black);
+				drawPolygonGradient(ctx, this.floor2[row][col], 'B', color1, color2, black);
+			}
+		}
+		/* (2) wall */
+		for (var row = 0; row < this.rows; row++) {
+			var color1 = 'rgba(0, 0, ' + this.depth[row] + ', 1)';
+			var color2 = 'rgba(0, 0, ' + this.depth[row + 1] + ', 1)';
+			/* (2-1) front */
+			for (var col = 0; col < this.cols; col++) {
+				if (in_front[row][col]) {
+					drawPolygon(ctx, this.front[row][col], color1, black);
+				}
+				for (var name in in_obj) {
+					/* some object in front of wall */
+					if ((in_obj[name][0] == row) && (in_obj[name][1] == col)) {
+						ctx.beginPath();
+						var center = {
+							y : 0,
+							x : 0
+						};
+						var right = 0;
+						for (var i = 0; i < this.front[row][col].length; i++) {
+							center.y += this.front[row][col][i][0] / 4;
+							center.x += this.front[row][col][i][1] / 4;
+							right = this.front[row][col][i][1] > right ? this.front[row][col][i][1] : right;
+						}
+						var len = (right - center.x) / 2;
+						ctx.arc(center.x, center.y, len, 0, Math.PI * 2, false);
+						ctx.stroke();
+/*
+						var gradient = ctx.createLinearGradient(pos.s[1], pos.s[0], pos.e[1], pos.e[0]);
+						gradient.addColorStop(0, color1);
+						gradient.addColorStop(1, color2);
+						ctx.fillStyle = gradient;
+*/
+						ctx.fillStyle = 'white';
+						ctx.fill();
+					}
+				}
+			}
+			/* (2-2) side */
+			for (var col = 0; col < this.cols + 1; col++) {
+				if (in_side[row][col]) {
+					var dir = col < (this.cols + 1) / 2 ? 'L' : 'R';
+					drawPolygonGradient(ctx, this.side[row][col], dir, color1, color2, black);
+				}
+			}
+		}
+		/* (3) site */
+		/*
+			side	site	out_site
+			+-------+-------+-------
+			0		-		-
+			1		0		n + 1
+			2		1		n + 1
+			-		2		false
+			3		3		n
+			4		4		n
+			5		-		-
+			+-------+-------+-------
+			0		-		-
+			1		0		n + 1
+			-		1		false
+			2		-		-
+			-		2		false
+			3		3		n
+			4		-		-
+			+-------+-------+-------
+		*/
+		if (this.site.length % 2 == 1) {
+			var l_start = (this.site.length - 1) / 2 - 1;
+			var r_start = (this.site.length - 1) / 2 + 1;
+		} else {
+			var l_start = this.site.length / 2 - 2;
+			var r_start = this.site.length / 2 + 1;
+		}
+		var site_out = false;
+		for (var col = l_start; col >= 0; col--) {
+			if (in_side[this.rows - 1][col + 1]) {
+				site_out = true;
+			}
+			if (site_out) {
+				drawPolygon(ctx, this.site[col], black, black);
+			}
+		}
+		var site_out = false;
+		for (var col = r_start; col < this.site.length; col++) {
+			if (in_side[this.rows - 1][col]) {
+				site_out = true;
+			}
+			if (site_out) {
+				drawPolygon(ctx, this.site[col], black, black);
+			}
+		}
+	},
+}
+
+function drawPolygon(ctx, point_list, color, bordercolor)
+{
+	ctx.beginPath();
+	for (var i = 0; i < point_list.length; i++) {
+		var p = point_list[i];
+		if (i == 0) {
+			ctx.moveTo(p[1], p[0]);
+		} else {
+			ctx.lineTo(p[1], p[0]);
+		}
+	}
+	ctx.closePath();
+	ctx.strokeStyle = bordercolor;
+	ctx.stroke();
+	if (color) {
+		ctx.fillStyle = color;
+		ctx.fill();
+	}
+}
+
+function drawPolygonGradient(ctx, point_list, dir, color1, color2, bordercolor)
+{
+	ctx.beginPath();
+	var edge = {
+		L : Number.MAX_VALUE,
+		T : Number.MAX_VALUE,
+		R : 0,
+		B : 0
+	};
+	for (var i = 0; i < point_list.length; i++) {
+		var p = point_list[i];
+		if (i == 0) {
+			ctx.moveTo(p[1], p[0]);
+		} else {
+			ctx.lineTo(p[1], p[0]);
+		}
+		edge.L = (p[1] < edge.L) ? p[1] : edge.L;
+		edge.T = (p[0] < edge.T) ? p[0] : edge.T;
+		edge.R = (edge.R < p[1]) ? p[1] : edge.R;
+		edge.B = (edge.B < p[0]) ? p[0] : edge.B;
+	}
+	ctx.closePath();
+	ctx.strokeStyle = bordercolor;
+	ctx.stroke();
+	var pos = {
+		L : {
+			s : [0, edge.R],
+			e : [0, edge.L]
+		},
+		T : {
+			s : [edge.B, 0],
+			e : [edge.T, 0]
+		},
+		R : {
+			s : [0, edge.L],
+			e : [0, edge.R]
+		},
+		B : {
+			s : [edge.T, 0],
+			e : [edge.B, 0]
+		}
+	}[dir];
+	var gradient = ctx.createLinearGradient(pos.s[1], pos.s[0], pos.e[1], pos.e[0]);
+	gradient.addColorStop(0, color1);
+	gradient.addColorStop(1, color2);
+	ctx.fillStyle = gradient;
+	ctx.fill();
+}
+
+var gMap = {
+	dat : [
+	/*
+		[0, 0, 0, 0, ... ],
+		[0, 0, 0, 0, ... ],
+		...
+	*/
+	],
+	pos : {
+	/*
+		y : 0,
+		x : 0,
+		dy : 0,
+		dx : 0
+	*/
+	},
+	obj : {
+	/*
+		NAME1 : {
+			y : 0,
+			x : 0,
+			dy : 0,
+			dx : 0
+		},
+		NAME2 : {
+			y : 0,
+			x : 0,
+			dy : 0,
+			dx : 0
+		},
+	*/
+	},
+	randomPos : function() {
+		var cand = ['u','r','d','l'];
+		var dir = NODECTL.dirs[cand[Math.floor(Math.random() * cand.length)]];
+		var y = Math.floor(Math.random() * this.dat.length);
+		var x = Math.floor(Math.random() * this.dat[y].length);
+		return {
+			y : y,
+			x : x,
+			dy : dir.dy,
+			dx : dir.dx
+		};
+	},
+	updateObj : function(in_name, in_y, in_x, in_dy, in_dx) {
+		this.obj[in_name] = {
+			y : in_y,
+			x : in_x,
+			dy : in_dy,
+			dx : in_dx
+		};
+	},
+	inMap : function(in_y, in_x) {
+		if ((in_y < 0) || (this.dat.length - 1 < in_y)) {
+			return false;
+		}
+		if ((in_x < 0) || (this.dat[in_y].length - 1 < in_x)) {
+			return false;
+		}
+		return true;
+	},
+	makeFloorTbl : function(in_rows, in_cols) {
+		if ((in_rows % 2 != 1) || (in_cols % 2 != 1)) {
+			alert('invalid rows or cols');
+			return [];
+		}
+		var floor_table = [];
+		switch (NODECTL.dydx2dir(this.pos.dy, this.pos.dx)) {
+		case 'u' :
+			/*
+				(dy, dx) = (-1, 0)
+				↓ : this.pos.y - (in_rows - 1), ..., this.pos.y
+				→ : this.pos.x - (in_cols - 1) / 2, ..., this.pos.x + (in_cols - 1) / 2
+			*/
+		case 'd' :
+			/*
+				(dy, dx) = (1, 0)
+				↑ : this.pos.y + (in_rows - 1), ..., this.pos.y
+				← : this.pos.x + (in_cols - 1) / 2, ..., this.pos.x - (in_cols - 1) / 2
+			*/
+			var row = this.pos.y + (in_rows - 1) * this.pos.dy;
+			var cntr = in_rows;
+			while (cntr-- > 0) {
+				var tmp = [];
+				var col = this.pos.x + (in_cols - 1) / 2 * this.pos.dy;
+				var cntc = in_cols;
+				while (cntc-- > 0) {
+					tmp.push([row, col]);
+					col -= this.pos.dy;
+				}
+				floor_table.push(tmp);
+				row -= this.pos.dy;
+			}
+			break;
+		case 'r' :
+			/*
+				(dy, dx) = (0, 1)
+				← : this.pos.x + (in_cols - 1), ..., this.pos.x
+				↓ : this.pos.y - (in_rows - 1) / 2, ..., this.pos.y + (in_rows - 1) / 2
+			*/
+		case 'l' :
+			/*
+				(dy, dx) = (0, -1)
+				→ : this.pos.x - (in_cols - 1), ..., this.pos.x
+				↑ : this.pos.y + (in_rows - 1) / 2, ..., this.pos.y - (in_rows - 1) / 2
+			*/
+			var col = this.pos.x + (in_cols - 1) * this.pos.dx;
+			var cntr = in_rows;
+			while (cntr-- > 0) {
+				var tmp = [];
+				var row = this.pos.y - (in_rows - 1) / 2 * this.pos.dx;
+				var cntc = in_cols;
+				while (cntc-- > 0) {
+					tmp.push([row, col]);
+					row += this.pos.dx;
+				}
+				floor_table.push(tmp);
+				col -= this.pos.dx;
+			}
+			break;
+		default :
+			break;
+		}
+		return floor_table;
+	},
+	makeWallTbl : function(in_rows, in_cols) {
+		/*
+			returns this object :
+			{
+				// (in_rows) entries
+				side : [
+					[ (in_cols + 1) entries ],
+					[ (in_cols + 1) entries ],
+					...
+				],
+				// (in_rows) entries
+				front : [
+					[ (in_cols) entries ],
+					[ (in_cols) entries ],
+					...
+				],
+				// 0 - this.obj.length entries
+				obj : {
+					NAME1 : [row, col],
+					NAME2 : [row, col],
+					...
+				}
+			}
+			entry :
+				false : nothing
+				true  : wall
+		*/
+		var floor_table = this.makeFloorTbl(in_rows, in_cols);
+		var ret = {
+			side : [],
+			front : [],
+			obj : {}
+		};
+		var lr = {
+			u : ['l', 'r'],
+			r : ['u', 'd'],
+			d : ['r', 'l'],
+			l : ['d', 'u']
+		}[NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+		var objNames = [];
+		for (var name in this.obj) {
+			objNames.push(name);
+		}
+		for (var row = 0; row < floor_table.length; row++) {
+			var tmp = {
+				side : [],
+				front : []
+			};
+			for (var col = 0; col < floor_table[row].length; col++) {
+				var pos = floor_table[row][col];
+				/* (1) side */
+				if (tmp.side.length > 0) {
+					/* remove right-wall, should be considered oneside-wall !! */
+					tmp.side.pop();
+				}
+				if (this.inMap(pos[0], pos[1])) {
+					/* left-wall, right-wall */
+					for (var i = 0; i < lr.length; i++) {
+						if (this.dat[pos[0]][pos[1]] & NODECTL.dirs[lr[i]].bit) {
+							tmp.side.push(false);
+						} else {
+							tmp.side.push(true);
+						}
+					}
+				} else {
+					tmp.side.push(true);
+					tmp.side.push(true);
+				}
+				/* (2) front */
+				if (this.inMap(pos[0], pos[1])) {
+					if (this.dat[pos[0]][pos[1]] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
+						tmp.front.push(false);
+					} else {
+						tmp.front.push(true);
+					}
+				} else {
+					tmp.front.push(true);
+				}
+				/* (3) obj */
+				var not_found = [];
+				for (var i = 0; i < objNames.length; i++) {
+					var name = objNames[i];
+					if ((this.obj[name].y == pos[0]) && (this.obj[name].x == pos[1])) {
+						ret.obj[name] = [row, col];
+					} else {
+						not_found.push(name);
+					}
+				}
+				names = not_found;
+			}
+			ret.side.push(tmp.side);
+			ret.front.push(tmp.front);
+		}
+		return ret;
+	},
+	updateView : function() {
+		var wall = this.makeWallTbl(gCanvas.rows, gCanvas.cols);
+		gCanvas.drawWall(wall.front, wall.side, wall.obj);
+	},
+	checkFront : function() {
+		if (this.inMap(this.pos.y + this.pos.dy, this.pos.x + this.pos.dx)) {
+			if (this.dat[this.pos.y][this.pos.x] & NODECTL.dydx2bit(this.pos.dy, this.pos.dx)) {
+				return true;
+			}
+		}
+		return false;
+	},
+	checkEvent : function() {
+		// Find Black-Onyx !!
+	},
+	updatePos : function(in_keycode) {
+		switch (in_keycode) {
+		/* go ahead */
+		case 38 :
+			if (!this.checkFront()) {
+				return false;
+			} else {
+				this.pos.y += this.pos.dy;
+				this.pos.x += this.pos.dx;
+			}
+			break;
+		/* turn left */
+		case 37 :
+		/* turn right */
+		case 39 :
+			var turn = [];
+			turn[37] = {
+				u : 'l',
+				r : 'u',
+				d : 'r',
+				l : 'd'
+			};
+			turn[39] = {
+				u : 'r',
+				r : 'd',
+				d : 'l',
+				l : 'u'
+			};
+			var dir = turn[in_keycode][NODECTL.dydx2dir(this.pos.dy, this.pos.dx)];
+			this.pos.dy = NODECTL.dirs[dir].dy;
+			this.pos.dx = NODECTL.dirs[dir].dx;
+			break;
+		default :
+			break;
+		}
+		this.checkEvent();
+		return true;
+	},
+};
+
+function obj2json(in_obj)
+{
+	var json = [];
+	for (var prop in in_obj) {
+		var value = in_obj[prop]; 
+		if (typeof value == 'string') {
+			value = "'" + value + "'";
+		}
+		json.push('"' + prop + '": ' + value);
+	}
+	return "{" + json.join(", ") + "}";
+}
+
+function cb_receive(in_err, in_data)
+{
+	if (in_err == APP_ERR_SUCCESS) {
+		for (var i = 0; i < in_data.length; i++) {
+			var obj = in_data[i];
+			var dat = eval('(' + obj.DATA + ')');
+			gMap.updateObj(obj.NAME, dat.y, dat.x, dat.dy, dat.dx);
+			gMap.updateView();
+		}
+	} else {
+		alert('receive-error(' + in_err + ')');
+	}
+}
+
+function cb_send(in_err)
+{
+	if (in_err != APP_ERR_SUCCESS) {
+		alert('send-error(' + in_err + ')');
+	}
+}
+
+function cb_start(in_started)
+{
+	if (in_started) {
+		gMap.pos = gMap.randomPos();
+		gMap.updateView();
+		window.addEventListener('keydown', function(in_e) {
+			if (gMap.updatePos(in_e.keyCode)) {
+				DEBUG.text('keydown : ' + in_e.keyCode);
+				gMap.updateView();
+				ConnJS.send2(obj2json(gMap.pos), cb_send);
+			} else {
+				DEBUG.text('stay');
+			}
+		}, false);
+	} else {
+		alert('start-error(' + in_started + ')');
+	}
+}
+
+//var gDebug = true;
+var gDebug = false;
+
+window.addEventListener('load', function(in_e) {
+	if (gDebug) {
+		DEBUG.init();
+	}
+	gCanvas.init();
+	var playre_name = 'player' + (new Date()).getTime();
+	ConnJS.start(playre_name, cb_start, cb_receive);
+}, false);
+
+var MAPDATA = {
+	dat : [
+		'+-+@+-+@+-+',
+		'|@|@|@|@|@|',
+		'+@+-+@+-+@+',
+		'|@@@@@@@@@|',
+		'+-+-+-+-+-+',
+		'|@@@|@@@|@@',
+		'+@+-+-+-+-+',
+		'@@|@@@|@@@|',
+		'+@+-+-+-+-+',
+		'|@@@|@@@@@|',
+		'+-+-+@+-+@+',
+		'|@@@|@|@@@|',
+		'+-u-+@+-+-+',
+	],
+	value : function(in_y, in_x) {
+		if ((in_y < 0) || (this.dat.length - 1 < in_y)) {
+			return '@';
+		}
+		if ((in_x < 0) || (this.dat[in_y].length - 1 < in_x)) {
+			return '@';
+		}
+		return this.dat[in_y].substr(in_x, 1);
+	}
+};
+
+/*
+                        (y * 2 - 1, x * 2)
+    (y * 2, x * 2 - 1)  (y * 2,     x * 2)  (y * 2, x * 2 + 1)
+                        (y * 2 + 1, x * 2)
+*/
+
+for (var y = 0; y < (MAPDATA.dat.length + 1) / 2; y++) {
+	gMap.dat[y] = [];
+	for (var x = 0; x < (MAPDATA.dat[y].length + 1) / 2; x++) {
+		var arround = {
+			c : {y : y * 2,     x : x * 2    },
+			u : {y : y * 2 - 1, x : x * 2    },
+			r : {y : y * 2,     x : x * 2 + 1},
+			d : {y : y * 2 + 1, x : x * 2    },
+			l : {y : y * 2,     x : x * 2 - 1}
+		};
+		for (var dir in arround) {
+			var value = MAPDATA.value(arround[dir].y, arround[dir].x);
+			switch (value) {
+			case 'u' :
+			case 'r' :
+			case 'd' :
+			case 'l' :
+				/* arround.[c] */
+				gMap.pos.y = y;
+				gMap.pos.x = x;
+				gMap.pos.dy = NODECTL.dirs[value].dy;
+				gMap.pos.dx = NODECTL.dirs[value].dx;
+				break;
+			case '|' :
+			case '-' :
+				/* arround.[urdl] */
+				gMap.dat[y][x] |= NODECTL.dirs[dir].bit;
+				break;
+			case '@' :
+			default :
+				/* arround.[urdl] */
+				break;
+			}
+		}
+	}
+}
+
+</script>
