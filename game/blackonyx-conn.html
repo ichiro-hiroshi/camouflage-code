@@ -263,13 +263,10 @@ var gCanvas = {
 						var len = (right - center.x) / 2;
 						ctx.arc(center.x, center.y, len, 0, Math.PI * 2, false);
 						ctx.stroke();
-/*
-						var gradient = ctx.createLinearGradient(pos.s[1], pos.s[0], pos.e[1], pos.e[0]);
-						gradient.addColorStop(0, color1);
-						gradient.addColorStop(1, color2);
+						var gradient = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, len);
+						gradient.addColorStop(0, color2);
+						gradient.addColorStop(1, color1);
 						ctx.fillStyle = gradient;
-*/
-						ctx.fillStyle = 'white';
 						ctx.fill();
 					}
 				}
