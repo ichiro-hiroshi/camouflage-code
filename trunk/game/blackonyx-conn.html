@@ -82,6 +82,8 @@ var gCanvas = {
 	canvas : null,
 	canvasH : 150,
 	canvasW : 400,
+	canvasImage : null,
+	canvasClips : [],
 	floor1 : [],
 	floor2 : [],
 	/*
@@ -112,6 +114,70 @@ var gCanvas = {
 		this.canvas = document.createElement('CANVAS');
 		this.canvas.height = this.canvasH;
 		this.canvas.width = this.canvasW;
+		/* the latest result */
+		this.canvasImage= document.createElement('IMG');
+		/*
+			canvasClips for animation
+
+			(-d,-d)       (w+d,-d)
+			+------------+
+			|+----------+|
+			||(0,0)     ||
+			++          ++(w+d,h/2)
+			||(0,h)     ||
+			|+----------+|
+			+------------+
+			(-d,h+d)      (w+d,h+d)
+		*/
+		var w = this.canvasW;
+		var h = this.canvasH;
+		var dlt = 15;
+		var r = {
+			outer : [
+				[[-dlt,  -dlt], [w+dlt,  -dlt]],
+				[[-dlt,   h/2], [w+dlt,   h/2]],
+				[[-dlt, h+dlt], [w+dlt, h+dlt]]
+			],
+			inner : [
+				[[0,   0], [w,   0]],
+				[[0, h/2], [w, h/2]],
+				[[0,   h], [w,   h]]
+			]
+		};
+		this.canvasClips[39] = [
+			{
+				mtrx : [(w+dlt)/w, dlt/w, 0, 1, -dlt, -dlt],
+				node : [r.inner[0][1], r.inner[1][1], r.outer[0][0]]
+			},
+			{
+				mtrx : [(w+dlt)/w, 0, 0, (h+dlt*2)/h, -dlt, -dlt],
+				node : [r.outer[2][0], r.inner[1][1], r.outer[0][0]]
+			},
+			{
+				mtrx : [(w+dlt)/w, -dlt/w, 0, 1, -dlt, dlt],
+				node : [r.outer[2][0], r.inner[1][1], r.inner[2][1]]
+			}
+		];
+		this.canvasClips[38] = [
+			{
+				mtrx : [(w+dlt*2)/w, 0, 0, (h+dlt*2)/h, -dlt, -dlt],
+				node : [r.inner[0][0], r.inner[2][0], r.inner[2][1], r.inner[0][1]]
+			}
+		];
+		this.canvasClips[37] = [
+			{
+				mtrx : [(w+dlt)/w, -dlt/w, 0, 1, 0, 0],
+				node : [r.inner[0][0], r.inner[1][0], r.outer[0][1]]
+			},
+			{
+				mtrx : [(w+dlt)/w, 0, 0, (h+dlt*2)/h, 0, -dlt],
+				node : [r.outer[2][1], r.inner[1][0], r.outer[0][1]]
+			},
+			{
+				mtrx : [(w+dlt)/w, dlt/w, 0, 1, 0, 0],
+				node : [r.outer[2][1], r.inner[1][0], r.inner[2][0]]
+			}
+		];
 	},
 	pointTable : function() {
 		var _r1 = 2 / 3;
@@ -263,7 +329,8 @@ var gCanvas = {
 						var len = (right - center.x) / 2;
 						ctx.arc(center.x, center.y, len, 0, Math.PI * 2, false);
 						ctx.stroke();
-						var gradient = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, len);
+						var adjust = len / 2;
+						var gradient = ctx.createRadialGradient(center.x - adjust, center.y - adjust, 0, center.x - adjust, center.y - adjust, len);
 						gradient.addColorStop(0, color2);
 						gradient.addColorStop(1, color1);
 						ctx.fillStyle = gradient;
@@ -326,6 +393,28 @@ var gCanvas = {
 			}
 		}
 	},
+	zoomUpWall : function(in_keycode) {
+		var clips = this.canvasClips[in_keycode];
+		var ctx = this.canvas.getContext('2d');
+		for (var i = 0; i < clips.length; i++) {
+			ctx.save();
+			ctx.beginPath();
+			for (var j = 0; j < clips[i].node.length; j++) {
+				var p = clips[i].node[j];
+				if (j == 0) {
+					ctx.moveTo(p[0], p[1]);
+				} else {
+					ctx.lineTo(p[0], p[1]);
+				}
+			}
+			ctx.closePath();
+			ctx.clip();
+			var m = clips[i].mtrx;
+			ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+			ctx.drawImage(this.canvasImage, 0, 0);
+			ctx.restore();
+		}
+	}
 }
 
 function drawPolygon(ctx, point_list, color, bordercolor)
@@ -538,7 +627,7 @@ var gMap = {
 					[ (in_cols) entries ],
 					...
 				],
-				// 0 - this.obj.length entries
+				// 0 - (this.obj.length) entries
 				obj : {
 					NAME1 : [row, col],
 					NAME2 : [row, col],
@@ -620,6 +709,7 @@ var gMap = {
 	updateView : function() {
 		var wall = this.makeWallTbl(gCanvas.rows, gCanvas.cols);
 		gCanvas.drawWall(wall.front, wall.side, wall.obj);
+		gCanvas.canvasImage.src = gCanvas.canvas.toDataURL();
 	},
 	checkFront : function() {
 		if (this.inMap(this.pos.y + this.pos.dy, this.pos.x + this.pos.dx)) {
@@ -696,6 +786,7 @@ function cb_receive(in_err, in_data)
 		}
 	} else {
 		alert('receive-error(' + in_err + ')');
+		ConnJS.end();
 	}
 }
 
@@ -703,6 +794,7 @@ function cb_send(in_err)
 {
 	if (in_err != APP_ERR_SUCCESS) {
 		alert('send-error(' + in_err + ')');
+		ConnJS.end();
 	}
 }
 
@@ -714,8 +806,13 @@ function cb_start(in_started)
 		window.addEventListener('keydown', function(in_e) {
 			if (gMap.updatePos(in_e.keyCode)) {
 				DEBUG.text('keydown : ' + in_e.keyCode);
-				gMap.updateView();
+				gCanvas.zoomUpWall(in_e.keyCode);
 				ConnJS.send2(obj2json(gMap.pos), cb_send);
+				var ms = 150;
+				window.setTimeout(
+					function() {
+						gMap.updateView();
+					}, ms);
 			} else {
 				DEBUG.text('stay');
 			}
