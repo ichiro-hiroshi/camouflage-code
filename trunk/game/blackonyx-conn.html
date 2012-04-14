@@ -194,14 +194,6 @@ var gCanvas = {
 			}
 			point_table.push(tmp);
 		}
-		/*
-		for (var row = 0; row < point_table.length; row++) {
-			for (var col = 0; col < point_table[row].length; col++) {
-				var point = point_table[row][col];
-				DEBUG.text('(' + point[0] + ',' + point[1] + ')');
-			}
-		}
-		*/
 		return point_table;
 	},
 	init_floor : function(point_table) {
@@ -276,7 +268,7 @@ var gCanvas = {
 		this.init_canvas();
 		document.body.appendChild(this.canvas);
 	},
-	drawWall : function(in_front, in_side, in_obj) {
+	draw : function(in_front, in_side, in_obj) {
 		if (this.rows != in_front.length) {
 			return;
 		}
@@ -348,23 +340,23 @@ var gCanvas = {
 		}
 		/* (3) site */
 		/*
-			side	site	out_site
+			side    site    out_site
 			+-------+-------+-------
-			0		-		-
-			1		0		n + 1
-			2		1		n + 1
-			-		2		false
-			3		3		n
-			4		4		n
-			5		-		-
+			0       -       -
+			1       0       n + 1
+			2       1       n + 1
+			-       2       false
+			3       3       n
+			4       4       n
+			5       -       -
 			+-------+-------+-------
-			0		-		-
-			1		0		n + 1
-			-		1		false
-			2		-		-
-			-		2		false
-			3		3		n
-			4		-		-
+			0       -       -
+			1       0       n + 1
+			-       1       false
+			2       -       -
+			-       2       false
+			3       3       n
+			4       -       -
 			+-------+-------+-------
 		*/
 		if (this.site.length % 2 == 1) {
@@ -392,8 +384,10 @@ var gCanvas = {
 				drawPolygon(ctx, this.site[col], black, black);
 			}
 		}
+		/* for transform */
+		this.canvasImage.src = this.canvas.toDataURL();
 	},
-	zoomUpWall : function(in_keycode) {
+	transform : function(in_keycode) {
 		var clips = this.canvasClips[in_keycode];
 		var ctx = this.canvas.getContext('2d');
 		for (var i = 0; i < clips.length; i++) {
@@ -708,8 +702,7 @@ var gMap = {
 	},
 	updateView : function() {
 		var wall = this.makeWallTbl(gCanvas.rows, gCanvas.cols);
-		gCanvas.drawWall(wall.front, wall.side, wall.obj);
-		gCanvas.canvasImage.src = gCanvas.canvas.toDataURL();
+		gCanvas.draw(wall.front, wall.side, wall.obj);
 	},
 	checkFront : function() {
 		if (this.inMap(this.pos.y + this.pos.dy, this.pos.x + this.pos.dx)) {
@@ -806,7 +799,7 @@ function cb_start(in_started)
 		window.addEventListener('keydown', function(in_e) {
 			if (gMap.updatePos(in_e.keyCode)) {
 				DEBUG.text('keydown : ' + in_e.keyCode);
-				gCanvas.zoomUpWall(in_e.keyCode);
+				gCanvas.transform(in_e.keyCode);
 				ConnJS.send2(obj2json(gMap.pos), cb_send);
 				var ms = 150;
 				window.setTimeout(
