@@ -388,6 +388,16 @@ var gCanvas = {
 		this.canvasImage.src = this.canvas.toDataURL();
 	},
 	transform : function(in_keycode) {
+		var accept = false;
+		for (var key in this.canvasClips) {
+			if (key == in_keycode) {
+				accept = true;
+				break;
+			}
+		}
+		if (!accept) {
+			return;
+		}
 		var clips = this.canvasClips[in_keycode];
 		var ctx = this.canvas.getContext('2d');
 		for (var i = 0; i < clips.length; i++) {
