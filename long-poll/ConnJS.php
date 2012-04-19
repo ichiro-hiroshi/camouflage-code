@@ -938,11 +938,23 @@ var {$APP_PREFIX} = {
 		xhr.send();
 		XHRBUFF.chain(xhr);
 	},
-	browseAllData : function() {
+	browseAllData : function(in_cb_browse) {
 		var xhr = new XMLHttpRequest();
-		xhr.open('GET', '{$URL_BROWSE}', false);
+		xhr.onreadystatechange = (function() {
+			return function() {
+				var err = xhr.get{$APP_PREFIX}Err();
+				if (!err) {
+					return;
+				}
+				if (err == '{$APP_ERR_SUCCESS}') {
+					in_cb_browse(err, xhr.responseText);
+				} else {
+					in_cb_browse(err, null);
+				}
+			};
+		})();
+		xhr.open('GET', '{$URL_BROWSE}', true);
 		xhr.send();
-		return xhr.responseText;
 	}
 };
 EOJS;
