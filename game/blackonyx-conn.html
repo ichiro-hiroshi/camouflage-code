@@ -763,6 +763,61 @@ var gMap = {
 		this.checkEvent();
 		return true;
 	},
+	make2DView : function() {
+		var cellsize = 30;
+		var w = this.dat[0].length * cellsize;
+		var h = this.dat.length * cellsize;
+		var view = document.createElement('CANVAS');
+		view.width = w;
+		view.height = h;
+		/* background */
+		var ctx = view.getContext('2d');
+		var black = 'rgba(0, 0, 0, 1)';
+		var blue1 = 'rgba(0, 0, 255, 1)';
+		var blue2 = 'rgba(0, 0, 122, 1)';
+		ctx.fillStyle = black;
+		ctx.fillRect(0, 0, w, h);
+		/* wall */
+		for (var i = 0; i < this.dat.length; i++) {
+			for (var j = 0; j < this.dat[i].length; j++) {
+				var lines = {
+					u : {
+						s : [cellsize * j,           cellsize * i],
+						e : [cellsize * (j + 1) - 1, cellsize * i],
+						color : blue2
+					},
+					r : {
+						s : [cellsize * (j + 1) - 1, cellsize * i],
+						e : [cellsize * (j + 1) - 1, cellsize * (i + 1) - 1],
+						color : blue1
+					},
+					d : {
+						s : [cellsize * j,           cellsize * (i + 1) - 1],
+						e : [cellsize * (j + 1) - 1, cellsize * (i + 1) - 1],
+						color : blue1
+					},
+					l : {
+						s : [cellsize * j, cellsize * i],
+						e : [cellsize * j, cellsize * (i + 1) - 1],
+						color : blue2
+					},
+				};
+				for (var dir in lines) {
+					if (!(this.dat[i][j] & NODECTL.dirs[dir].bit)) {
+						ctx.beginPath();
+						ctx.moveTo(lines[dir].s[0], lines[dir].s[1]);
+						ctx.lineTo(lines[dir].e[0], lines[dir].e[1]);
+						ctx.closePath();
+						ctx.strokeStyle = lines[dir].color;
+						ctx.stroke();
+					}
+				}
+				//if () {
+				//}
+			}
+		}
+		return view;
+	},
 };
 
 function obj2json(in_obj)
@@ -818,6 +873,12 @@ function cb_start(in_started)
 					}, ms);
 			} else {
 				DEBUG.text('stay');
+			}
+			if (in_e.keyCode == 40) {
+				ConnJS.browseAllData(function(e, d){
+					document.body.appendChild(gMap.make2DView());
+					// alert(d.length);
+				});
 			}
 		}, false);
 	} else {
