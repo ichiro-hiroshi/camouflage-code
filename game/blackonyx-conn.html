@@ -266,7 +266,7 @@ var gCanvas = {
 		this.init_side(point_table);
 		this.init_depth();
 		this.init_canvas();
-		document.body.appendChild(this.canvas);
+		return this.canvas;
 	},
 	draw : function(in_front, in_side, in_obj) {
 		if (this.rows != in_front.length) {
@@ -763,57 +763,87 @@ var gMap = {
 		this.checkEvent();
 		return true;
 	},
-	make2DView : function() {
+	make2DView : function(in_canvas) {
 		var cellsize = 30;
 		var w = this.dat[0].length * cellsize;
 		var h = this.dat.length * cellsize;
-		var view = document.createElement('CANVAS');
+		if (in_canvas) {
+			var view = in_canvas;
+		} else {
+			var view = document.createElement('CANVAS');
+		}
 		view.width = w;
 		view.height = h;
 		/* background */
 		var ctx = view.getContext('2d');
 		var black = 'rgba(0, 0, 0, 1)';
 		var blue1 = 'rgba(0, 0, 255, 1)';
-		var blue2 = 'rgba(0, 0, 122, 1)';
+		var blue2 = 'rgba(0, 0, 80, 1)';
 		ctx.fillStyle = black;
 		ctx.fillRect(0, 0, w, h);
+		/* prepare */
+		var objects = [];
+		objects.push([this.pos.y, this.pos.x]);
+		for (var name in this.obj) {
+			objects.push([this.obj[name].y, this.obj[name].x]);
+		}
 		/* wall */
 		for (var i = 0; i < this.dat.length; i++) {
 			for (var j = 0; j < this.dat[i].length; j++) {
 				var lines = {
 					u : {
-						s : [cellsize * j,           cellsize * i],
-						e : [cellsize * (j + 1) - 1, cellsize * i],
+						s : [cellsize * i, cellsize * j],
+						e : [cellsize * i, cellsize * (j + 1) - 1],
 						color : blue2
 					},
 					r : {
-						s : [cellsize * (j + 1) - 1, cellsize * i],
-						e : [cellsize * (j + 1) - 1, cellsize * (i + 1) - 1],
+						s : [cellsize * i,           cellsize * (j + 1) - 1],
+						e : [cellsize * (i + 1) - 1, cellsize * (j + 1) - 1],
 						color : blue1
 					},
 					d : {
-						s : [cellsize * j,           cellsize * (i + 1) - 1],
-						e : [cellsize * (j + 1) - 1, cellsize * (i + 1) - 1],
+						s : [cellsize * (i + 1) - 1, cellsize * j],
+						e : [cellsize * (i + 1) - 1, cellsize * (j + 1) - 1],
 						color : blue1
 					},
 					l : {
-						s : [cellsize * j, cellsize * i],
-						e : [cellsize * j, cellsize * (i + 1) - 1],
+						s : [cellsize * i,           cellsize * j],
+						e : [cellsize * (i + 1) - 1, cellsize * j],
 						color : blue2
 					},
 				};
 				for (var dir in lines) {
 					if (!(this.dat[i][j] & NODECTL.dirs[dir].bit)) {
 						ctx.beginPath();
-						ctx.moveTo(lines[dir].s[0], lines[dir].s[1]);
-						ctx.lineTo(lines[dir].e[0], lines[dir].e[1]);
+						ctx.moveTo(lines[dir].s[1], lines[dir].s[0]);
+						ctx.lineTo(lines[dir].e[1], lines[dir].e[0]);
 						ctx.closePath();
 						ctx.strokeStyle = lines[dir].color;
 						ctx.stroke();
 					}
 				}
-				//if () {
-				//}
+				var not_found = [];
+				for (var k = 0; k < objects.length; k++) {
+					if ((objects[k][1] == i) && (objects[k][0] == j)) {
+						ctx.beginPath();
+						var center = {
+							y : cellsize * (i + 0.5),
+							x : cellsize * (j + 0.5)
+						};
+						var len = cellsize / 3;
+						ctx.arc(center.x, center.y, len, 0, Math.PI * 2, false);
+						ctx.stroke();
+						var adjust = len / 2;
+						var gradient = ctx.createRadialGradient(center.x - adjust, center.y - adjust, 0, center.x - adjust, center.y - adjust, len);
+						gradient.addColorStop(0, blue1);
+						gradient.addColorStop(1, blue2);
+						ctx.fillStyle = gradient;
+						ctx.fill();
+					} else {
+						not_found.push(objects[k]);
+					}
+				}
+				objects = not_found;
 			}
 		}
 		return view;
@@ -874,28 +904,72 @@ function cb_start(in_started)
 			} else {
 				DEBUG.text('stay');
 			}
-			if (in_e.keyCode == 40) {
-				ConnJS.browseAllData(function(e, d){
-					document.body.appendChild(gMap.make2DView());
-					// alert(d.length);
-				});
-			}
 		}, false);
 	} else {
 		alert('start-error(' + in_started + ')');
 	}
 }
 
-//var gDebug = true;
-var gDebug = false;
+function browse(in_canvas)
+{
+	return function() {
+		ConnJS.browseAllData(function(in_err, in_data) {
+			if (in_err != APP_ERR_SUCCESS) {
+				return;
+			}
+			for (var i = 0; i < in_data.length; i++) {
+				var obj = in_data[i];
+				var dat = eval('(' + obj.DATA + ')');
+				gMap.updateObj(obj.NAME, dat.y, dat.x, dat.dy, dat.dx);
+			}
+			gMap.make2DView(in_canvas);
+		});
+	}
+}
+
+var gApp = {
+	view : null,
+	timer : {
+		id : null,
+		interval : 5000
+	},
+	init : function() {
+		this.view = document.createElement('DIV');
+		var canvas = gMap.make2DView();
+		this.view.appendChild(canvas);
+		document.body.appendChild(this.view);
+		document.body.appendChild(document.createElement('BR'));
+		var button = document.createElement('INPUT');
+		button.type = 'button';
+		button.value = 'start';
+		button.addEventListener('click', function(in_e) {
+			if (in_e.target.value == 'start') {
+				in_e.target.value = 'end';
+				gApp.start();
+			} else {
+				in_e.target.value = 'start';
+				gApp.end();
+			}
+		}, false);
+		document.body.appendChild(button);
+		this.timer.id = window.setInterval(browse(canvas), this.timer.interval);
+	},
+	start : function() {
+		window.clearInterval(this.timer.id);
+		gMap.obj = {};
+		this.view.replaceChild(gCanvas.init(), this.view.firstChild);
+		var playre_name = 'player' + (new Date()).getTime();
+		ConnJS.start(playre_name, cb_start, cb_receive);
+	},
+	end : function() {
+		this.view.replaceChild(gMap.make2DView(), this.view.firstChild);
+		ConnJS.end();
+	}
+};
 
 window.addEventListener('load', function(in_e) {
-	if (gDebug) {
-		DEBUG.init();
-	}
-	gCanvas.init();
-	var playre_name = 'player' + (new Date()).getTime();
-	ConnJS.start(playre_name, cb_start, cb_receive);
+	// DEBUG.init();
+	gApp.init();
 }, false);
 
 var MAPDATA = {
