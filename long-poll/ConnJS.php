@@ -947,7 +947,7 @@ var {$APP_PREFIX} = {
 					return;
 				}
 				if (err == '{$APP_ERR_SUCCESS}') {
-					in_cb_browse(err, xhr.responseText);
+					in_cb_browse(err, eval(xhr.responseText));
 				} else {
 					in_cb_browse(err, null);
 				}
