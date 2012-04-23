@@ -962,8 +962,8 @@ var gApp = {
 		ConnJS.start(playre_name, cb_start, cb_receive);
 	},
 	end : function() {
-		this.view.replaceChild(gMap.make2DView(), this.view.firstChild);
 		ConnJS.end();
+		location.reload();
 	}
 };
 
