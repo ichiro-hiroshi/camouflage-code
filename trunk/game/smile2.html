@@ -1,17 +1,5 @@
 <script>
 
-/*
-
-対戦相手待ち画面
-	browse して、二名の参加者が対戦中ならば閲覧画面を返す
-	参加しなくてもポーリングで状況把握
-参加時、サーバ側で爆弾埋め込みを決定し、シグネチャを生成
-ログイン×2 で開始
-	自分とシグネチャが異なれば一旦ログオフ & ログイン
-
-
-*/
-
 var gSmileRand = {
 	_mod : 2048,
 	_seed : (new Date()).getTime(),
@@ -68,7 +56,7 @@ var gSmile = {
 		}
 		return true;
 	},
-	arrounds : function(in_x, in_y) {
+	arounds : function(in_x, in_y) {
 		var ret = [];
 		var x = Number(in_x);
 		var y = Number(in_y);
@@ -91,7 +79,7 @@ var gSmile = {
 	},
 	checkRisk : function(in_x, in_y) {
 		var risk = 0;
-		var targets = this.arrounds(in_x, in_y);
+		var targets = this.arounds(in_x, in_y);
 		for (var i = 0; i < targets.length; i++) {
 			if (this.cells[targets[i][1]][targets[i][0]].bomb) {
 				risk++;
@@ -104,7 +92,7 @@ var gSmile = {
 		if (this.firstTry) {
 			if (cell.bomb) {
 				cell.bomb = false;
-				var targets = this.arrounds(in_x, in_y);
+				var targets = this.arounds(in_x, in_y);
 				for (var i = 0; i < targets.length; i++) {
 					this.cells[targets[i][1]][targets[i][0]].risk--;
 				}
@@ -121,7 +109,7 @@ var gSmile = {
 		cell.own = in_player;
 		var opened = [{x : in_x, y : in_y, r : cell.risk}];
 		if (cell.risk == 0) {
-			var targets = this.arrounds(in_x, in_y);
+			var targets = this.arounds(in_x, in_y);
 			for (var i = 0; i < targets.length; i++) {
 				opened = opened.concat(this.open(in_player, targets[i][0], targets[i][1]));
 			}
