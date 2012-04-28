@@ -1,0 +1,174 @@
+<script>
+
+/*
+
+対戦相手待ち画面
+	browse して、二名の参加者が対戦中ならば閲覧画面を返す
+	参加しなくてもポーリングで状況把握
+参加時、サーバ側で爆弾埋め込みを決定し、シグネチャを生成
+ログイン×2 で開始
+	自分とシグネチャが異なれば一旦ログオフ & ログイン
+
+
+*/
+
+var gSmileRand = {
+	_mod : 2048,
+	_seed : (new Date()).getTime(),
+	resetSeed : function(in_seed) {
+		this._seed = in_seed;
+	},
+	rand : function() {
+		this._seed = Math.abs((17 * this._seed - 1) % this._mod);
+		return this._seed / this._mod;
+	},
+};
+
+var gSmile = {
+	seed : -1,
+	level : -1,
+	cells : [],
+	firstTry : true,
+	init : function(in_w, in_h, in_level, in_seed) {
+		this.level = in_level;
+		this.seed = in_seed;
+		gSmileRand.resetSeed(in_seed);
+		for (var i = 0; i < in_h; i++) {
+			this.cells[i] = [];
+			for (var j = 0; j < in_w; j++) {
+				if (Math.floor(gSmileRand.rand() * 10) < in_level) {
+					this.cells[i][j] = {
+						open : false,
+						bomb : true,
+						risk : -1,
+						own : null
+					};
+				} else {
+					this.cells[i][j] = {
+						open : false,
+						bomb : false,
+						risk : -1,
+						own : null,
+					};
+				}
+			}
+		}
+		for (var i = 0; i < in_h; i++) {
+			for (var j = 0; j < in_w; j++) {
+				this.cells[i][j].risk = this.checkRisk(j, i);
+			}
+		}
+	},
+	inMap : function(in_x, in_y) {
+		if ((in_y < 0) || (this.cells.length <= in_y)) {
+			return false;
+		}
+		if ((in_x < 0) || (this.cells[in_y].length <= in_x)) {
+			return false;
+		}
+		return true;
+	},
+	arrounds : function(in_x, in_y) {
+		var ret = [];
+		var x = Number(in_x);
+		var y = Number(in_y);
+		var candidate = [
+			[x - 1, y - 1],
+			[x + 0, y - 1],
+			[x + 1, y - 1],
+			[x - 1, y + 0],
+			[x + 1, y + 0],
+			[x - 1, y + 1],
+			[x + 0, y + 1],
+			[x + 1, y + 1]
+		];
+		for (var i = 0; i < candidate.length; i++) {
+			if (this.inMap(candidate[i][0], candidate[i][1])) {
+				ret.push(candidate[i]);
+			}
+		}
+		return ret;
+	},
+	checkRisk : function(in_x, in_y) {
+		var risk = 0;
+		var targets = this.arrounds(in_x, in_y);
+		for (var i = 0; i < targets.length; i++) {
+			if (this.cells[targets[i][1]][targets[i][0]].bomb) {
+				risk++;
+			}
+		}
+		return risk;
+	},
+	open : function(in_player, in_x, in_y) {
+		var cell = this.cells[in_y][in_x];
+		if (this.firstTry) {
+			if (cell.bomb) {
+				cell.bomb = false;
+				var targets = this.arrounds(in_x, in_y);
+				for (var i = 0; i < targets.length; i++) {
+					this.cells[targets[i][1]][targets[i][0]].risk--;
+				}
+			}
+			this.firstTry = false;
+		}
+		if (cell.open) {
+			return [];
+		}
+		if (cell.bomb) {
+			alert('game over');
+		}
+		cell.open = true;
+		cell.own = in_player;
+		var opened = [{x : in_x, y : in_y, r : cell.risk}];
+		if (cell.risk == 0) {
+			var targets = this.arrounds(in_x, in_y);
+			for (var i = 0; i < targets.length; i++) {
+				opened = opened.concat(this.open(in_player, targets[i][0], targets[i][1]));
+			}
+		}
+		return opened;
+	}
+};
+
+/* sample */
+
+var X = 10;
+var Y = 10;
+
+gSmile.init(X, Y, 1, 4096);
+
+String.prototype.s2id = function()
+{
+	var tmp = this.split('_');
+	return {x : tmp[1], y : tmp[2]};
+}
+
+var turn = 'blue';
+
+function cell_open(in_id)
+{
+	if (turn == 'blue') {
+		turn = 'red';
+	} else {
+		turn = 'blue';
+	}
+	var pos = in_id.s2id();
+	var opened = gSmile.open(turn, pos.x, pos.y);
+	for (var i = 0; i < opened.length; i++) {
+		var cell = document.getElementById('_'+ opened[i].x +'_'+ opened[i].y);
+		cell.innerHTML = opened[i].r;
+		cell.style.backgroundColor = turn;
+	}
+}
+
+document.write('<table>');
+for (i = 0; i < Y; i++) {
+	document.write('<tr>');
+	for (j = 0; j < X; j++) {
+		document.write('<td style="width:1em;" id="_' + j + '_' + i+ '" onclick="cell_open(this.id);">@</td>');
+	}
+	document.write('</tr>');
+}
+document.write('</table>');
+
+</script>
