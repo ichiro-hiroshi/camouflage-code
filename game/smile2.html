@@ -1,3 +1,6 @@
+<!--
+<script type='text/javascript' src='ConnJS.php'></script>
+-->
 <script>
 
 var gSmileRand = {
@@ -56,7 +59,7 @@ var gSmile = {
 		}
 		return true;
 	},
-	arounds : function(in_x, in_y) {
+	arrounds : function(in_x, in_y) {
 		var ret = [];
 		var x = Number(in_x);
 		var y = Number(in_y);
@@ -79,7 +82,7 @@ var gSmile = {
 	},
 	checkRisk : function(in_x, in_y) {
 		var risk = 0;
-		var targets = this.arounds(in_x, in_y);
+		var targets = this.arrounds(in_x, in_y);
 		for (var i = 0; i < targets.length; i++) {
 			if (this.cells[targets[i][1]][targets[i][0]].bomb) {
 				risk++;
@@ -87,76 +90,162 @@ var gSmile = {
 		}
 		return risk;
 	},
+	safe_open : function(in_player, in_x, in_y) {
+		var opened = [];
+		var cell = this.cells[in_y][in_x];
+		if (!cell.open) {
+			cell.open = true;
+			cell.own = in_player;
+			if (cell.risk == 0) {
+				var targets = this.arrounds(in_x, in_y);
+				for (var i = 0; i < targets.length; i++) {
+					opened = opened.concat(this.safe_open(in_player, targets[i][0], targets[i][1]));
+				}
+			}
+			opened.push({x : in_x, y : in_y, r : cell.risk});
+		}
+		return opened;
+	},
 	open : function(in_player, in_x, in_y) {
 		var cell = this.cells[in_y][in_x];
 		if (this.firstTry) {
 			if (cell.bomb) {
 				cell.bomb = false;
-				var targets = this.arounds(in_x, in_y);
+				var targets = this.arrounds(in_x, in_y);
 				for (var i = 0; i < targets.length; i++) {
 					this.cells[targets[i][1]][targets[i][0]].risk--;
 				}
 			}
 			this.firstTry = false;
 		}
-		if (cell.open) {
-			return [];
-		}
 		if (cell.bomb) {
-			alert('game over');
+			/* alert('game over'); */
+			return null;
+		} else {
+			return this.safe_open(in_player, in_x, in_y);
 		}
-		cell.open = true;
-		cell.own = in_player;
-		var opened = [{x : in_x, y : in_y, r : cell.risk}];
-		if (cell.risk == 0) {
-			var targets = this.arounds(in_x, in_y);
-			for (var i = 0; i < targets.length; i++) {
-				opened = opened.concat(this.open(in_player, targets[i][0], targets[i][1]));
+	},
+	riversi : function(in_player, in_x, in_y) {
+		var reversed = [];
+		var targets = this.arrounds(in_x, in_y);
+		for (var i = 0; i < targets.length; i++) {
+			var x = targets[i][0];
+			var y = targets[i][1];
+			var v = {
+				dx : x - in_x,
+				dy : y - in_y,
+				op : false,
+				cl : false,
+				cells : []
+			};
+			do {
+				var cell = this.cells[y][x];
+				if (!cell.own) {
+					break;
+				}
+				if (cell.own == in_player) {
+					if (v.op) {
+						v.cl = true;
+					}
+					break;
+				} else {
+					v.op = true;
+				}
+				v.cells.push({x : x, y : y});
+				x += v.dx;
+				y += v.dy;
+			} while (this.inMap(x, y));
+			if (v.cl) {
+				for (var j = 0; j < v.cells.length; j++) {
+					this.cells[v.cells[j].y][v.cells[j].x].own = in_player;
+				}
+				reversed = reversed.concat(v.cells);
 			}
 		}
-		return opened;
+		return reversed;
 	}
 };
 
 /* sample */
+
+HTMLTableElement.prototype.td = function(in_x, in_y)
+{
+	return this.rows[in_y].cells[in_x];
+};
+
+HTMLTableCellElement.prototype.pos = function()
+{
+	return {x : this.cellIndex, y : this.parentNode.rowIndex};
+};
 
 var X = 10;
 var Y = 10;
 
 gSmile.init(X, Y, 1, 4096);
 
-String.prototype.s2id = function()
-{
-	var tmp = this.split('_');
-	return {x : tmp[1], y : tmp[2]};
-}
-
 var turn = 'blue';
 
-function cell_open(in_id)
+function cell_open(in_pos)
 {
 	if (turn == 'blue') {
 		turn = 'red';
 	} else {
 		turn = 'blue';
 	}
-	var pos = in_id.s2id();
-	var opened = gSmile.open(turn, pos.x, pos.y);
+	var opened = gSmile.open(turn, in_pos.x, in_pos.y);
+	if (!opened) {
+		alert('bomb!');
+		return;
+	}
+	var field = document.getElementById('field');
 	for (var i = 0; i < opened.length; i++) {
-		var cell = document.getElementById('_'+ opened[i].x +'_'+ opened[i].y);
+		var cell = field.td(opened[i].x, opened[i].y);
 		cell.innerHTML = opened[i].r;
-		cell.style.backgroundColor = turn;
+		cell.className = turn;
+	}
+	var reversed = gSmile.riversi(turn, in_pos.x, in_pos.y);
+	for (var i = 0; i < reversed.length; i++) {
+		var cell = field.td(reversed[i].x, reversed[i].y);
+		cell.className = turn;
 	}
 }
 
-document.write('<table>');
+document.write('<table id="field">');
 for (i = 0; i < Y; i++) {
 	document.write('<tr>');
 	for (j = 0; j < X; j++) {
-		document.write('<td style="width:1em;" id="_' + j + '_' + i+ '" onclick="cell_open(this.id);">@</td>');
+		document.write('<td class="unknown" onclick="cell_open(this.pos());"></td>');
 	}
 	document.write('</tr>');
 }
 document.write('</table>');
 
 </script>
+<style type='text/css'>
+TD {
+	width : 20px;
+	height : 23px;
+	padding: 0px;
+	border-style: solid;
+	border-width: 1px;
+	border-radius : 3px;
+	color: #ffffff;
+	text-align: center;
+	text-shadow: -1px 0px 2px #666666, 0px -1px 2px #666666, 0px 1px 2px #666666, 0px 1px 2px #666666; 
+}
+TD.unknown {
+	border-color: #999999 #666666 #666666 #999999;
+	background: -moz-linear-gradient(bottom, #999999, #ffffff);
+	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#ffffff));
+}
+TD.red {
+	border-color: #cc6666 #993333 #993333 #cc6666;
+	background: -moz-linear-gradient(bottom, #cc6666, #ffcccc);
+	background: -webkit-gradient(linear, right bottom, left top, from(#cc6666), to(#ffcccc));
+}
+TD.blue {
+	border-color: #6666cc #333399 #333399 #6666cc;
+	background: -moz-linear-gradient(bottom, #6666cc, #ccccff);
+	background: -webkit-gradient(linear, right bottom, left top, from(#6666cc), to(#ccccff));
+}
+</style>
