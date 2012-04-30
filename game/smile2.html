@@ -136,7 +136,7 @@ var gSmile = {
 				dy : y - in_y,
 				op : false,
 				cl : false,
-				cells : []
+				pool : []
 			};
 			do {
 				var cell = this.cells[y][x];
@@ -151,16 +151,16 @@ var gSmile = {
 				} else {
 					v.op = true;
 				}
-				v.cells.push({x : x, y : y});
+				v.pool.push({x : x, y : y, r : cell.risk});
 				x += v.dx;
 				y += v.dy;
 			} while (this.inMap(x, y));
 			if (v.cl) {
-				for (var j = 0; j < v.cells.length; j++) {
-					this.cells[v.cells[j].y][v.cells[j].x].own = in_player;
-				}
-				reversed = reversed.concat(v.cells);
+				reversed = reversed.concat(v.pool);
 			}
+		}
+		for (var i = 0; i < reversed.length; i++) {
+			this.cells[reversed[i].y][reversed[i].x].own = in_player;
 		}
 		return reversed;
 	}
@@ -193,20 +193,24 @@ function cell_open(in_pos)
 		turn = 'blue';
 	}
 	var opened = gSmile.open(turn, in_pos.x, in_pos.y);
-	if (!opened) {
+	if (opened) {
+		opened = opened.concat(gSmile.riversi(turn, in_pos.x, in_pos.y))
+		var timeout = Math.ceil(500 / opened.length);
+		var delay = (function() {
+			return function() {
+				if (opened.length == 0) {
+					return;
+				}
+				var pos = opened.pop();
+				var cell = field.td(pos.x, pos.y);
+				cell.innerHTML = pos.r;
+				cell.className = turn;
+				window.setTimeout(delay, timeout);
+			};
+		})();
+		(delay)();
+	} else {
 		alert('bomb!');
-		return;
-	}
-	var field = document.getElementById('field');
-	for (var i = 0; i < opened.length; i++) {
-		var cell = field.td(opened[i].x, opened[i].y);
-		cell.innerHTML = opened[i].r;
-		cell.className = turn;
-	}
-	var reversed = gSmile.riversi(turn, in_pos.x, in_pos.y);
-	for (var i = 0; i < reversed.length; i++) {
-		var cell = field.td(reversed[i].x, reversed[i].y);
-		cell.className = turn;
 	}
 }
 
