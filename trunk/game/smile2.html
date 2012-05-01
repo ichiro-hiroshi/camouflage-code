@@ -20,14 +20,17 @@ var gSmile = {
 	level : -1,
 	cells : [],
 	firstTry : true,
+	canOpen : -1,
 	init : function(in_w, in_h, in_level, in_seed) {
 		this.level = in_level;
 		this.seed = in_seed;
+		this.canOpen = in_w * in_h;
 		gSmileRand.resetSeed(in_seed);
 		for (var i = 0; i < in_h; i++) {
 			this.cells[i] = [];
 			for (var j = 0; j < in_w; j++) {
 				if (Math.floor(gSmileRand.rand() * 10) < in_level) {
+					this.canOpen--;
 					this.cells[i][j] = {
 						open : false,
 						bomb : true,
@@ -90,6 +93,9 @@ var gSmile = {
 		}
 		return risk;
 	},
+	isFinished : function() {
+		return (this.canOpen == 0);
+	},
 	safe_open : function(in_player, in_x, in_y) {
 		var opened = [];
 		var cell = this.cells[in_y][in_x];
@@ -103,6 +109,7 @@ var gSmile = {
 				}
 			}
 			opened.push({x : in_x, y : in_y, r : cell.risk});
+			this.canOpen--;
 		}
 		return opened;
 	},
@@ -115,6 +122,7 @@ var gSmile = {
 				for (var i = 0; i < targets.length; i++) {
 					this.cells[targets[i][1]][targets[i][0]].risk--;
 				}
+				this.canOpen++;
 			}
 			this.firstTry = false;
 		}
@@ -166,7 +174,7 @@ var gSmile = {
 	}
 };
 
-/* sample */
+/* sample UI */
 
 HTMLTableElement.prototype.td = function(in_x, in_y)
 {
@@ -178,33 +186,51 @@ HTMLTableCellElement.prototype.pos = function()
 	return {x : this.cellIndex, y : this.parentNode.rowIndex};
 };
 
-var X = 10;
-var Y = 10;
+var X = 7;
+var Y = 7;
 
 gSmile.init(X, Y, 1, 4096);
 
 var turn = 'blue';
 
+gTurn = {
+	cnt : 0,
+	player : ['red', 'blue'],
+	next : function() {
+		this.cnt++;
+	},
+	prev : function() {
+		this.cnt--;
+	},
+	name : function() {
+		return this.player[this.cnt % this.player.length];
+	}
+};
+
 function cell_open(in_pos)
 {
-	if (turn == 'blue') {
-		turn = 'red';
-	} else {
-		turn = 'blue';
-	}
-	var opened = gSmile.open(turn, in_pos.x, in_pos.y);
+	gTurn.next();
+	var opened = gSmile.open(gTurn.name(), in_pos.x, in_pos.y);
 	if (opened) {
-		opened = opened.concat(gSmile.riversi(turn, in_pos.x, in_pos.y))
-		var timeout = Math.ceil(500 / opened.length);
+		if (opened.length == 0) {
+			gTurn.prev();
+			return;
+		}
+		opened = opened.concat(gSmile.riversi(gTurn.name(), in_pos.x, in_pos.y));
+		var totalms = 500;
+		var timeout = Math.ceil(totalms / opened.length);
 		var delay = (function() {
 			return function() {
 				if (opened.length == 0) {
+					if (gSmile.isFinished()) {
+						alert('finished');
+					}
 					return;
 				}
 				var pos = opened.pop();
 				var cell = field.td(pos.x, pos.y);
 				cell.innerHTML = pos.r;
-				cell.className = turn;
+				cell.className = gTurn.name();
 				window.setTimeout(delay, timeout);
 			};
 		})();
