@@ -610,6 +610,8 @@ define('CMD_END', 'end');
 define('CMD_SEND', 'send');
 define('CMD_RECEIVE', 'reseive');
 define('CMD_BROWSE', 'browse');
+define('CMD_JS_TEST', 'test');
+define('CMD_JS_TEST_NODE', 'test_node');
 
 define('TYPE_OVERUPDATE', 'over');
 define('TYPE_WAITUPDATE', 'wait');
@@ -626,6 +628,7 @@ define('URL_SEND1', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_T
 define('URL_SEND2', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_WAITUPDATE)));
 define('URL_RECEIVE', entry(array(Q_CMD => CMD_RECEIVE, P_CLIENTID => R_CLIENTID)));
 define('URL_BROWSE', entry(array(Q_CMD => CMD_BROWSE)));
+define('URL_JS_TEST_NODE', entry(array(Q_CMD => CMD_JS_TEST_NODE)));
 
 function APP_ERR_CCDB($in_ccdb_rwerr)
 {
@@ -657,7 +660,14 @@ function print_json($in_hash)
 		foreach ($dat as $key => $val) {
 			$dat[$key] = str_replace("'", "\'", $val);
 		}
-		array_push($jsons, "\t{\n\t\tID:'{$id}',\n\t\tNAME:'{$dat['NAME']}',\n\t\tDATA:'{$dat['DATA']}'\n\t}");
+		$jo = <<<EOJO
+	{
+		ID : '{$id}',
+		NAME : '{$dat['NAME']}',
+		DATA : '{$dat['DATA']}'
+	}
+EOJO;
+		array_push($jsons, $jo);
 	}
 	print "[\n" . implode(",\n", $jsons) . "\n]";
 }
@@ -740,6 +750,80 @@ if (array_key_exists(Q_CMD, $_GET)) {
 		header('Content-Type: application/json');
 		print_json($all);
 		break;
+	case CMD_JS_TEST :
+		header('Content-Type: text/html');
+		$nodes = 3;
+		$URL_JS_TEST_NODE = URL_JS_TEST_NODE;
+		while ($nodes-- > 0) {
+			print <<<EOTEST
+<div><iframe src='{$URL_JS_TEST_NODE}'></iframe></div>
+EOTEST;
+		}
+		break;
+	case CMD_JS_TEST_NODE :
+		header('Content-Type: text/html');
+		$APP_SELF = APP_SELF;
+		$APP_PREFIX = APP_PREFIX;
+		print <<<EOTEST
+<div id='report'></div>
+<script type='text/javascript' src='{$APP_SELF}'></script>
+<script type='text/javascript'>
+
+function report(in_text)
+{
+	document.getElementById('report').innerHTML += '<br />' + in_text;
+}
+
+function cb_start(in_started)
+{
+	if (in_started) {
+		var rep = 5;
+		var max = 5000;
+		while (rep-- > 0) {
+			var tm = Math.floor(Math.random() * max);
+			window.setTimeout((function() {
+				return function() {
+					{$APP_PREFIX}.send1('send-' + tm, cb_send);
+				};
+			})(), tm);
+		}
+		window.setTimeout(function() {
+			{$APP_PREFIX}.end();
+			report('finished.');
+		}, max);
+	} else {
+		report('failed to start.');
+	}
+}
+
+function cb_receive(in_err, in_data)
+{
+	if (in_err != APP_ERR_SUCCESS) {
+		{$APP_PREFIX}.end();
+		report('failed to receive.');
+	} else {
+		for (var i = 0; i < in_data.length; i++) {
+			var obj = in_data[i];
+			report('receive (' + obj.NAME + ', ' + obj.DATA + ')');
+		}
+	}
+}
+
+function cb_send(in_err)
+{
+	if (in_err != APP_ERR_SUCCESS) {
+		{$APP_PREFIX}.end();
+		report('failed to send.');
+	}
+}
+
+var name = 'No.' + Math.floor(Math.random() * 100);
+report(name);
+{$APP_PREFIX}.start(name, cb_start, cb_receive);
+
+</script>
+EOTEST;
+		break;
 	default :
 		break;
 	}
@@ -767,40 +851,49 @@ var APP_ERR_CCDB_NOID = '{$APP_ERR_CCDB_NOID}';
 var APP_ERR_CCDB_TIMEOUT = '{$APP_ERR_CCDB_TIMEOUT}';
 var APP_ERR_GENERIC = '{$APP_ERR_GENERIC}';
 
-var XHRBUFF = {
-	_buff : [],
-	chain : function (in_xhr) {
-		for (var i = 0; i < this._buff.length; i++) {
-			if (!this._buff[i]) {
-				this._buff[i] = in_xhr;
-				return;
+(function() {
+	var ArrayExtension = {
+		index : function(in_entry) {
+			for (var i = 0; i < this.length; i++) {
+				if (this[i] == in_entry) {
+					return i;
+				}
+			}
+			return -1;
+		},
+		inArray : function(in_entry) {
+			return (this.index(in_entry) < 0) ? false : true;
+		},
+		randomEntry : function() {
+			return this[Math.floor(Math.random() * this.length)];
+		},
+		chainRef : function(in_ref) {
+			for (var i = 0; i < this.length; i++) {
+				if (!this[i]) {
+					this[i] = in_ref;
+					return;
+				}
+			}
+			this.push(in_ref);
+		},
+		unChainRef : function(in_ref) {
+			for (var i = 0; i < this.length; i++) {
+				if (this[i] == in_ref) {
+					this[i] = null;
+					return;
+				}
 			}
 		}
-		this._buff.push(in_xhr);
-	},
-	unChain : function (in_xhr) {
-		for (var i = 0; i < this._buff.length; i++) {
-			if (this._buff[i] == in_xhr) {
-				this._buff[i] = null;
-				return;
-			}
-		}
-	},
-	allAbort : function () {
-		for (var i = 0; i < this._buff.length; i++) {
-			if (this._buff[i]) {
-				this._buff[i].abort();
-				this._buff[i] = null;
-			}
-		}
+	};
+	for (var prop in ArrayExtension) {
+		Array.prototype[prop] = ArrayExtension[prop];
 	}
-};
+})();
 
 XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
 	if (this.readyState != 4) {
 		return null;
-	}
-	if (this.status == 200) {
+	} else if (this.status == 200) {
 		return this.getResponseHeader('{$APP_XHEADER}');
 	} else if (this.status == 0) {
 		// xhr has been aborted
@@ -813,6 +906,7 @@ XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
 var {$APP_PREFIX} = {
 	_id : null,
 	_waitLock : false,
+	_xhrbuff : [],
 	start : function(in_name, in_cb_start, in_cb_poll) {
 		/*
 			in_cb_start(in_err)
@@ -824,27 +918,32 @@ var {$APP_PREFIX} = {
 				in_err == {$APP_ERR_GENERIC} : need retry.
 		*/
 		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = (function() {
+		xhr.onreadystatechange = (function(self) {
 			return function() {
 				var err = xhr.get{$APP_PREFIX}Err();
 				if (!err) {
 					return;
 				}
 				if (err == '{$APP_ERR_SUCCESS}') {
-					{$APP_PREFIX}._id = xhr.responseText;
+					self._id = xhr.responseText;
 					(in_cb_start)(true);
-					{$APP_PREFIX}._poll(in_cb_poll);
+					self._poll(in_cb_poll);
 				} else {
 					(in_cb_start)(false);
 				}
 			};
-		})();
+		})(this);
 		var url = '{$URL_START}';
 		xhr.open('GET', url.replace(/{$R_NAME}/, in_name), true);
 		xhr.send();
 	},
 	end : function() {
-		XHRBUFF.allAbort();
+		for (var i = 0; i < this._xhrbuff.length; i++) {
+			if (this._xhrbuff[i]) {
+				this._xhrbuff[i].abort();
+				this._xhrbuff[i] = null;
+			}
+		}
 		var xhr = new XMLHttpRequest();
 		var url = '{$URL_END}';
 		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
@@ -863,24 +962,24 @@ var {$APP_PREFIX} = {
 			return false;
 		}
 		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = (function() {
+		xhr.onreadystatechange = (function(self) {
 			return function() {
 				var err = xhr.get{$APP_PREFIX}Err();
 				if (!err) {
 					return;
 				}
-				{$APP_PREFIX}._waitLock = false;
+				self._waitLock = false;
 				if (err) {
 					(in_cb_send)(err);
 				} else {
 					(in_cb_send)('{$APP_ERR_GENERIC}');
 				}
-				XHRBUFF.unChain(xhr);
+				self._xhrbuff.unChainRef(xhr);
 			};
-		})();
+		})(this);
 		xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send(in_data);
-		XHRBUFF.chain(xhr);
+		this._xhrbuff.chainRef(xhr);
 		return true;
 	},
 	_send_1by1 : function(in_url, in_data, in_cb_send) {
@@ -917,7 +1016,7 @@ var {$APP_PREFIX} = {
 	},
 	_poll : function(in_cb_poll) {
 		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = (function() {
+		xhr.onreadystatechange = (function(self) {
 			return function() {
 				var err = xhr.get{$APP_PREFIX}Err();
 				if (!err) {
@@ -926,17 +1025,17 @@ var {$APP_PREFIX} = {
 				if (err == '{$APP_ERR_SUCCESS}') {
 					in_cb_poll(err, eval(xhr.responseText));
 					// next long-poll
-					{$APP_PREFIX}._poll(in_cb_poll);
+					self._poll(in_cb_poll);
 				} else {
 					in_cb_poll(err, null);
 				}
-				XHRBUFF.unChain(xhr);
+				self._xhrbuff.unChainRef(xhr);
 			};
-		})();
+		})(this);
 		var url = '{$URL_RECEIVE}';
 		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send();
-		XHRBUFF.chain(xhr);
+		this._xhrbuff.chainRef(xhr);
 	},
 	browseAllData : function(in_cb_browse) {
 		var xhr = new XMLHttpRequest();
@@ -957,6 +1056,163 @@ var {$APP_PREFIX} = {
 		xhr.send();
 	}
 };
+
+var p2p = {
+	C : {
+		S_UNKNOWN : 0,
+		S_HELLO1 : 1,
+		S_HELLO2 : 2,
+		S_APP_WAITING : 3,
+		S_APP_CURRENT : 4,
+		TIMEOUT_HELLO : 10 * 1000,
+		TIMEOUT_APP : 60 * 1000,
+		HELLO : 'hello',
+		DATA : 'app',
+	},
+	makeData : function(in_app_data) {
+		return '{'
+			+ this.C.HELLO + ': "' + (this.helloTo ? this.helloTo : '') + '", '
+			+ this.C.DATA + ': ' + in_app_data
+			+ '}';
+	},
+	hello1st : function(p) {
+		if (p.me.length > 0) {
+			this.helloTo = p.me.randomEntry();
+		} else if (p.none.length > 0) {
+			this.helloTo = p.none.randomEntry();
+		} else {
+			return;
+		}
+		this.state = this.C.S_HELLO2;
+		{$APP_PREFIX}.send2(
+			this.makeData(null),
+			(function(self) {
+				return function(in_err) {
+					self.cb_send(in_err);
+				};
+			})(this));
+	},
+	hello2nd : function(p) {
+		if (p.me.inArray(this.helloTo)) {
+			this.partner = this.helloTo;
+			this.state = this.C.S_APP_WAITING;
+			this.timestamp = (new Date()).getTime();
+			(this.appStarted)(true);
+			// not retuen
+		} else if (p.none.inArray(this.helloTo)) {
+			return;
+		} else {
+			// exists in "p.him" or not exists
+			this.helloTo = null;
+			this.state = this.C.S_HELLO1;
+		}
+		{$APP_PREFIX}.send2(
+			this.makeData(null),
+			(function(self) {
+				return function(in_err) {
+					self.cb_send(in_err);
+				};
+			})(this));
+	},
+	cb_receive : function(in_err, in_data) {
+		switch (this.state) {
+		case this.C.S_HELLO1 :
+		case this.C.S_HELLO2 :
+			if ((in_err != APP_ERR_SUCCESS) ||
+				((new Date()).getTime() - this.timestamp > this.C.TIMEOUT_HELLO)) {
+				{$APP_PREFIX}.end();
+				(this.appStarted)(false);
+				this.init();
+				return;
+			}
+			var p = {
+				me : [],
+				him : [],
+				none : []
+			};
+			for (var i = 0; i < in_data.length; i++) {
+				var obj = in_data[i];
+				var dat = eval('(' + obj.DATA + ')');
+				if (dat[this.C.HELLO] == this.name) {
+					p.me.push(obj.NAME);
+				} else if (dat[this.C.HELLO]) {
+					p.him.push(obj.NAME);
+				} else {
+					p.none.push(obj.NAME);
+				}
+			}
+			if (this.state == this.C.S_HELLO1) {
+				this.hello1st(p);
+			} else if (this.state == this.C.S_HELLO2) {
+				this.hello2nd(p);
+			}
+			break;
+		case this.C.S_APP_WAITING :
+		case this.C.S_APP_CURRENT :
+			if (in_err != APP_ERR_SUCCESS) {
+				{$APP_PREFIX}.end();
+				(this.lostConnection)();
+				return;
+			}
+			break;
+		case this.C.S_UNKNOWN :
+		default :
+			return;
+		}
+	},
+	cb_send : function(in_err) {
+		if (in_err != APP_ERR_SUCCESS) {
+			{$APP_PREFIX}.end();
+			(this.appStarted)(false);
+			this.init();
+		}
+	},
+	cb_start : function(in_started) {
+		if (in_started) {
+			{$APP_PREFIX}.send2(
+				this.makeData(null),
+				(function(self) {
+					return function(in_err) {
+						self.cb_send(in_err);
+					};
+				})(this));
+			this.timestamp = (new Date()).getTime();
+			this.state = this.C.S_HELLO1;
+		} else {
+			{$APP_PREFIX}.end();
+			(this.appStarted)(false);
+			this.init();
+		}
+	},
+	init : function() {
+		this.state = this.C.S_UNKNOWN;
+		this.timestamp = 0;
+		this.helloTo = null;
+		this.partner = null;
+	},
+	start : function(playre_name, appStarted, recvAppData, lostConnection) {
+		this.init();
+		this.name = playre_name;
+		this.appStarted = appStarted;
+		this.recvAppData = recvAppData;
+		this.lostConnection = lostConnection;
+		{$APP_PREFIX}.start(
+			this.name,
+			(function(self) {
+				return function(in_started) {
+					self.cb_start(in_started);
+				};
+			})(this),
+			(function(self) {
+				return function(in_err, in_data) {
+					self.cb_receive(in_err, in_data);
+				};
+			})(this));
+	},
+	sendAppData : function() {
+	}
+};
+
 EOJS;
 }
 
