@@ -370,6 +370,7 @@ class CCDB
 				if ($read[2] > $in_us) {
 					$ret[$id] = array(
 						'NAME' => $read[0],
+						'WRIT' => $read[2],
 						'DATA' => $read[3]
 					);
 				}
@@ -628,6 +629,7 @@ define('URL_SEND1', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_T
 define('URL_SEND2', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_WAITUPDATE)));
 define('URL_RECEIVE', entry(array(Q_CMD => CMD_RECEIVE, P_CLIENTID => R_CLIENTID)));
 define('URL_BROWSE', entry(array(Q_CMD => CMD_BROWSE)));
+define('URL_JS_TEST', entry(array(Q_CMD => CMD_JS_TEST)));
 define('URL_JS_TEST_NODE', entry(array(Q_CMD => CMD_JS_TEST_NODE)));
 
 function APP_ERR_CCDB($in_ccdb_rwerr)
@@ -664,6 +666,7 @@ function print_json($in_hash)
 	{
 		ID : '{$id}',
 		NAME : '{$dat['NAME']}',
+		WRIT : '{$dat['WRIT']}',
 		DATA : '{$dat['DATA']}'
 	}
 EOJO;
@@ -672,7 +675,11 @@ EOJO;
 	print "[\n" . implode(",\n", $jsons) . "\n]";
 }
 
-if (array_key_exists(Q_CMD, $_GET)) {
+
+if (array_key_exists(CMD_JS_TEST, $_GET)) {
+	header('Location: ' . URL_JS_TEST);
+	exit;
+} elseif  (array_key_exists(Q_CMD, $_GET)) {
 	$ccdb = new CCDB(DB);
 	switch ($_GET[Q_CMD]) {
 	case CMD_START :
@@ -781,11 +788,11 @@ function cb_start(in_started)
 		var max = 5000;
 		while (rep-- > 0) {
 			var tm = Math.floor(Math.random() * max);
-			window.setTimeout((function() {
+			window.setTimeout((function(tm) {
 				return function() {
 					{$APP_PREFIX}.send1('send-' + tm, cb_send);
 				};
-			})(), tm);
+			})(tm), tm);
 		}
 		window.setTimeout(function() {
 			{$APP_PREFIX}.end();
@@ -899,7 +906,7 @@ XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
 		// xhr has been aborted
 		return null;
 	} else {
-		return '{$APP_ERR_GENERIC}';
+		return APP_ERR_GENERIC;
 	}
 }
 
@@ -907,15 +914,30 @@ var {$APP_PREFIX} = {
 	_id : null,
 	_waitLock : false,
 	_xhrbuff : [],
+	_latest : {},
+	_latestJo : function(in_jo) {
+		var ret = [];
+		var tmp = eval('(' + in_jo + ')');
+		for (var i = 0; i < tmp.length; i++) {
+			if ((typeof(this._latest[tmp[i].ID]) != 'undefined')
+				&& (this._latest[tmp[i].ID].WRIT > tmp[i].WRIT)) {
+				ret.push(this._latest[tmp[i].ID]);
+			} else {
+				this._latest[tmp[i].ID] = tmp[i];
+				ret.push(tmp[i]);
+			}
+		}
+		return ret;
+	},
 	start : function(in_name, in_cb_start, in_cb_poll) {
 		/*
 			in_cb_start(in_err)
 				in_err == true : start
 				in_err == false : can't start (retry later)
 			in_cb_poll(in_err, in_data)
-				in_err == {$APP_ERR_SUCCESS} : you can use in_data.
-				in_err == {$APP_ERR_CCDB_NOID} : your id is expired (need re-start).
-				in_err == {$APP_ERR_GENERIC} : need retry.
+				in_err == APP_ERR_SUCCESS : you can use in_data.
+				in_err == APP_ERR_CCDB_NOID : your id is expired (need re-start).
+				in_err == APP_ERR_GENERIC : need retry.
 		*/
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function(self) {
@@ -924,7 +946,7 @@ var {$APP_PREFIX} = {
 				if (!err) {
 					return;
 				}
-				if (err == '{$APP_ERR_SUCCESS}') {
+				if (err == APP_ERR_SUCCESS) {
 					self._id = xhr.responseText;
 					(in_cb_start)(true);
 					self._poll(in_cb_poll);
@@ -953,10 +975,10 @@ var {$APP_PREFIX} = {
 	_send : function(in_url, in_data, in_cb_send) {
 		/*
 			in_cb_send(in_err)
-				in_err == {$APP_ERR_SUCCESS} : sent-data has been accepted.
-				in_err == {$APP_ERR_CCDB_NOID} : your id is expired (need re-start).
-				in_err == {$APP_ERR_CCDB_TIMEOUT} : need retry.
-				in_err == {$APP_ERR_GENERIC} : need retry.
+				in_err == APP_ERR_SUCCESS : sent-data has been accepted.
+				in_err == APP_ERR_CCDB_NOID : your id is expired (need re-start).
+				in_err == APP_ERR_CCDB_TIMEOUT : need retry.
+				in_err == APP_ERR_GENERIC : need retry.
 		*/
 		if (!this._id) {
 			return false;
@@ -972,7 +994,7 @@ var {$APP_PREFIX} = {
 				if (err) {
 					(in_cb_send)(err);
 				} else {
-					(in_cb_send)('{$APP_ERR_GENERIC}');
+					(in_cb_send)(APP_ERR_GENERIC);
 				}
 				self._xhrbuff.unChainRef(xhr);
 			};
@@ -1022,8 +1044,8 @@ var {$APP_PREFIX} = {
 				if (!err) {
 					return;
 				}
-				if (err == '{$APP_ERR_SUCCESS}') {
-					in_cb_poll(err, eval(xhr.responseText));
+				if (err == APP_ERR_SUCCESS) {
+					in_cb_poll(err, self._latestJo(xhr.responseText));
 					// next long-poll
 					self._poll(in_cb_poll);
 				} else {
@@ -1039,19 +1061,19 @@ var {$APP_PREFIX} = {
 	},
 	browseAllData : function(in_cb_browse) {
 		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = (function() {
+		xhr.onreadystatechange = (function(self) {
 			return function() {
 				var err = xhr.get{$APP_PREFIX}Err();
 				if (!err) {
 					return;
 				}
-				if (err == '{$APP_ERR_SUCCESS}') {
-					in_cb_browse(err, eval(xhr.responseText));
+				if (err == APP_ERR_SUCCESS) {
+					in_cb_browse(err, self._latestJo(xhr.responseText));
 				} else {
 					in_cb_browse(err, null);
 				}
 			};
-		})();
+		})(this);
 		xhr.open('GET', '{$URL_BROWSE}', true);
 		xhr.send();
 	}
