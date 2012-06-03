@@ -354,12 +354,15 @@ class CCDB
 	function update2($in_id, $in_data) {
 		return $this->_update($in_id, $in_data, TRUE);
 	}
-	function _getUpdated4Id($in_id, $in_us) {
+	function _getUpdated4Id($in_id, $in_us, $in_targets = NULL) {
 		$ret = array();
 		if ($dh = opendir($this->dir)) {
 			while (($fname = readdir($dh)) !== FALSE) {
 				$id = substr($fname, 0, -strlen(CCDB_SSUFFIX));
 				if ($in_id == $id) {
+					continue;
+				}
+				if ($in_targets && !in_array($id, $in_targets)) {
 					continue;
 				}
 				$read = $this->_read($id, TRUE);
@@ -381,14 +384,14 @@ class CCDB
 		}
 		return $ret;
 	}
-	function getUpdated4Id($in_id) {
+	function getUpdated4Id($in_id, $in_targets = NULL) {
 		$path = $this->_id2path($in_id);
 		$fh = @fopen($path, 'r+');
 		if ($fh) {
 			flock($fh, LOCK_SH);
 			list($name, $r_us, $w_us) = explode(',', trim(fgets($fh)));
 			flock($fh, LOCK_UN);
-			$updates = $this->_getUpdated4Id($in_id, $r_us);
+			$updates = $this->_getUpdated4Id($in_id, $r_us, $in_targets);
 			$r_us = util_us();
 			flock($fh, LOCK_EX);
 			rewind($fh);
@@ -447,64 +450,45 @@ function ccdb_test()
 	}
 // test-2 : expire & browseAllData
 	$ccdb->cleanUp();
-	// id1 : start
+	// id1 : start & update1
 	// id2 : [x]
 	// id3 : [x]
 	$id1 = $ccdb->start('user1');
 	if (!$id1) {
 		$ccdb->dpExit('2-1 failed');
 	}
+	if ($ccdb->update1($id1, "{$id1}-1") != CCDB_RWERR_SUCCESS) {
+		$ccdb->dpExit('2-2 failed');
+	}
+	if (count($ccdb->browseAllData()) != 1) {
+		$ccdb->dpExit('2-3 failed');
+	}
 	// id1 : [o]
-	// id2 : start
+	// id2 : start & update1
 	// id3 : [x]
 	$id2 = $ccdb->start('user2');
 	if (!$id2) {
-		$ccdb->dpExit('2-2 failed');
-	}
-	// id1 : update1 & sleep
-	// id2 : start
-	// id3 : [x]
-	if ($ccdb->update1($id1, "{$id1}-1") != CCDB_RWERR_SUCCESS) {
-		$ccdb->dpExit('2-3 failed');
-	}
-	sleep(2);
-	// id1 : [o]
-	// id2 : expired
-	// id3 : start
-	if (count($ccdb->browseAllData()) != 2) {
 		$ccdb->dpExit('2-4 failed');
 	}
-	$id3 = $ccdb->start('user3');
-	if (!$id3) {
+	if ($ccdb->update1($id2, "{$id2}-1") != CCDB_RWERR_SUCCESS) {
 		$ccdb->dpExit('2-5 failed');
 	}
 	if (count($ccdb->browseAllData()) != 2) {
 		$ccdb->dpExit('2-6 failed');
 	}
-	if ($ccdb->update1($id2, "{$id2}-1") == CCDB_RWERR_SUCCESS) {
+	sleep(2);
+	// id1 : expire
+	// id2 : expire
+	// id3 : start & update1
+	$id3 = $ccdb->start('user3');
+	if (!$id3) {
 		$ccdb->dpExit('2-7 failed');
 	}
-	// id1 : update1
-	// id2 : [x]
-	// id3 : [o]
-	if ($ccdb->update1($id1, "{$id1}-2") != CCDB_RWERR_SUCCESS) {
+	if ($ccdb->update1($id3, "{$id3}-1") != CCDB_RWERR_SUCCESS) {
 		$ccdb->dpExit('2-8 failed');
 	}
-	// id1 : [o]
-	// id2 : [x]
-	// id3 : getUpdated4Id & sleep
-	sleep(1);
-	$updates = $ccdb->getUpdated4Id($id3);
-	if ($updates === CCDB_RWERR_NOID) {
-		$ccdb->dpExit('2-9 failed');
-	}
-	sleep(1);
-	// id1 : [o]
-	// id2 : can't start
-	// id3 : [o]
-	$id2 = $ccdb->start('user2');
-	if ($id2) {
-		$ccdb->dpExit('2-10 failed');
+	if (count($ccdb->browseAllData()) != 1) {
+		$ccdb->dpExit('2-8 failed');
 	}
 // test-3 : getUpdated4Id
 	// id1 : start
@@ -587,16 +571,40 @@ function ccdb_test()
 	if ($ccdb->update2($id1, "{$id1}-2") != CCDB_RWERR_SUCCESS) {
 		$ccdb->dpExit('4-6 failed');
 	}
+// test-5 : getUpdated4Id with "$in_targets"
+	$ccdb->setConfig('maxClient', 3);
+	$ccdb->cleanUp();
+	$id1 = $ccdb->start('user1');
+	if (!$id1) {
+		$ccdb->dpExit('5-1 failed');
+	}
+	if ($ccdb->update1($id1, "{$id1}-1") != CCDB_RWERR_SUCCESS) {
+		$ccdb->dpExit('5-2 failed');
+	}
+	$id2 = $ccdb->start('user2');
+	if (!$id2) {
+		$ccdb->dpExit('5-3 failed');
+	}
+	if ($ccdb->update1($id2, "{$id2}-1") != CCDB_RWERR_SUCCESS) {
+		$ccdb->dpExit('5-4 failed');
+	}
+	$id3 = $ccdb->start('user2');
+	if (!$id3) {
+		$ccdb->dpExit('5-5 failed');
+	}
+	if ($ccdb->update1($id3, "{$id3}-1") != CCDB_RWERR_SUCCESS) {
+		$ccdb->dpExit('5-6 failed');
+	}
+	$updates = $ccdb->getUpdated4Id($id1, array($id2));
+	if (count($updates) != 1) {
+		$ccdb->dpExit('5-8 failed');
+	}
 // finished
 	// $ccdb->cleanUp();
 	$ccdb->dpExit('finished');
 }
 
-if (FALSE) {
-	ccdb_test();
-}
-
-// main
+// frontend
 
 define('APP_SELF', substr(str_replace(__DIR__, '', __FILE__), 1));
 define('APP_PREFIX', str_replace('.php', '', APP_SELF));
@@ -611,26 +619,30 @@ define('CMD_END', 'end');
 define('CMD_SEND', 'send');
 define('CMD_RECEIVE', 'reseive');
 define('CMD_BROWSE', 'browse');
-define('CMD_JS_TEST', 'test');
-define('CMD_JS_TEST_NODE', 'test_node');
+define('CMD_TEST', 'test');
+define('CMD_TEST_DB', 'test_db');
+define('CMD_TEST_JS', 'test_js');
 
 define('TYPE_OVERUPDATE', 'over');
 define('TYPE_WAITUPDATE', 'wait');
 
 define('P_CLIENTID', 'clientid');
 define('P_NAME', 'name');
+define('P_TARGET', 'target');
 
 define('R_CLIENTID', h(P_CLIENTID, 5));
 define('R_NAME', h(P_NAME, 5));
+define('R_TARGET', h(P_TARGET, 5));
 
 define('URL_START', entry(array(Q_CMD => CMD_START, P_NAME => R_NAME)));
 define('URL_END', entry(array(Q_CMD => CMD_END, P_CLIENTID => R_CLIENTID)));
 define('URL_SEND1', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_OVERUPDATE)));
 define('URL_SEND2', entry(array(Q_CMD => CMD_SEND, P_CLIENTID => R_CLIENTID, Q_TYPE => TYPE_WAITUPDATE)));
-define('URL_RECEIVE', entry(array(Q_CMD => CMD_RECEIVE, P_CLIENTID => R_CLIENTID)));
+define('URL_RECEIVE', entry(array(Q_CMD => CMD_RECEIVE, P_CLIENTID => R_CLIENTID, P_TARGET => R_TARGET)));
 define('URL_BROWSE', entry(array(Q_CMD => CMD_BROWSE)));
-define('URL_JS_TEST', entry(array(Q_CMD => CMD_JS_TEST)));
-define('URL_JS_TEST_NODE', entry(array(Q_CMD => CMD_JS_TEST_NODE)));
+define('URL_TEST', entry(array(Q_CMD => CMD_TEST)));
+define('URL_TEST_DB', entry(array(Q_CMD => CMD_TEST_DB)));
+define('URL_TEST_JS', entry(array(Q_CMD => CMD_TEST_JS)));
 
 function APP_ERR_CCDB($in_ccdb_rwerr)
 {
@@ -676,8 +688,8 @@ EOJO;
 }
 
 
-if (array_key_exists(CMD_JS_TEST, $_GET)) {
-	header('Location: ' . URL_JS_TEST);
+if (array_key_exists(CMD_TEST, $_GET)) {
+	header('Location: ' . URL_TEST);
 	exit;
 } elseif  (array_key_exists(Q_CMD, $_GET)) {
 	$ccdb = new CCDB(DB);
@@ -728,7 +740,11 @@ if (array_key_exists(CMD_JS_TEST, $_GET)) {
 	case CMD_RECEIVE :
 		$start = time();
 		while (TRUE) {
-			$updates = $ccdb->getUpdated4Id($_GET[P_CLIENTID]);
+			$targets = null;
+			if (array_key_exists(P_TARGET, $_GET) && $_GET[P_TARGET]) {
+				$targets = explode(',', $_GET[P_TARGET]);
+			}
+			$updates = $ccdb->getUpdated4Id($_GET[P_CLIENTID], $targets);
 			if ($updates === CCDB_RWERR_NOID) {
 				DefaultHeader(APP_ERR_CCDB_NOID);
 				break;
@@ -757,17 +773,50 @@ if (array_key_exists(CMD_JS_TEST, $_GET)) {
 		header('Content-Type: application/json');
 		print_json($all);
 		break;
-	case CMD_JS_TEST :
+	case CMD_TEST :
 		header('Content-Type: text/html');
-		$nodes = 3;
-		$URL_JS_TEST_NODE = URL_JS_TEST_NODE;
-		while ($nodes-- > 0) {
-			print <<<EOTEST
-<div><iframe src='{$URL_JS_TEST_NODE}'></iframe></div>
+		$URL_TEST_JS = URL_TEST_JS;
+		$URL_TEST_DB = URL_TEST_DB;
+		print <<<EOTEST
+<style type='text/css'>
+DIV.f1 {
+	height: 150px;
+}
+DIV.f2 {
+	height: 450px;
+}
+TABLE {
+	width: 100%;
+}
+IFRAME {
+	margin: 0px;
+	padding: 0px;
+	border: solid 1px gray;
+	width: 100%;
+	height: 100%;
+}
+</style>
+<table>
+<tr>
+	<td>
+		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+	</td>
+	<td>
+		<!--<div class='f2'><iframe src='{$URL_TEST_DB}'></iframe></div>-->
+	</td>
+</tr>
+</table>
 EOTEST;
-		}
 		break;
-	case CMD_JS_TEST_NODE :
+	case CMD_TEST_DB :
+		header('Content-Type: text/plain');
+		ccdb_test();
+		break;
+	case CMD_TEST_JS :
 		header('Content-Type: text/html');
 		$APP_SELF = APP_SELF;
 		$APP_PREFIX = APP_PREFIX;
@@ -776,10 +825,14 @@ EOTEST;
 <script type='text/javascript' src='{$APP_SELF}'></script>
 <script type='text/javascript'>
 
+// common
+
 function report(in_text)
 {
 	document.getElementById('report').innerHTML += '<br />' + in_text;
 }
+
+// {$APP_PREFIX}
 
 function cb_start(in_started)
 {
@@ -824,9 +877,33 @@ function cb_send(in_err)
 	}
 }
 
+// p2p
+
+function appStarted(in_started)
+{
+	if (in_started) {
+		report(p2p.name + ' vs ' + {$APP_PREFIX}.hisId2Name(p2p.partner));
+	} else {
+		report('ng');
+	}
+}
+
+function recvAppData()
+{
+}
+
+function lostConnection()
+{
+}
+
 var name = 'No.' + Math.floor(Math.random() * 100);
 report(name);
-{$APP_PREFIX}.start(name, cb_start, cb_receive);
+
+if (false) {
+	{$APP_PREFIX}.start(name, cb_start, cb_receive);
+} else {
+	p2p.start(name, appStarted, recvAppData, lostConnection);
+}
 
 </script>
 EOTEST;
@@ -847,6 +924,7 @@ EOTEST;
 	$URL_BROWSE = URL_BROWSE;
 	$R_CLIENTID = R_CLIENTID;
 	$R_NAME = R_NAME;
+	$R_TARGET = R_TARGET;
 	$APP_ERR_SUCCESS = APP_ERR_SUCCESS;
 	$APP_ERR_CCDB_NOID = APP_ERR_CCDB_NOID;
 	$APP_ERR_CCDB_TIMEOUT = APP_ERR_CCDB_TIMEOUT;
@@ -913,7 +991,8 @@ XMLHttpRequest.prototype.get{$APP_PREFIX}Err = function() {
 var {$APP_PREFIX} = {
 	_id : null,
 	_waitLock : false,
-	_xhrbuff : [],
+	_pollTarget : [],
+	_xhrBuff : [],
 	_latest : {},
 	_latestJo : function(in_jo) {
 		var ret = [];
@@ -928,6 +1007,21 @@ var {$APP_PREFIX} = {
 			}
 		}
 		return ret;
+	},
+	appendPollTarget : function(in_target_id) {
+		if (!this._pollTarget.inArray(in_target_id)) {
+			this._pollTarget.push(in_target_id);
+		}
+	},
+	hisId2Name : function(in_id) {
+		if (typeof(this._latest[in_id]) != 'undefined') {
+			return this._latest[in_id].NAME;
+		} else {
+			return null;
+		}
+	},
+	myId : function() {
+		return this._id;
 	},
 	start : function(in_name, in_cb_start, in_cb_poll) {
 		/*
@@ -960,10 +1054,10 @@ var {$APP_PREFIX} = {
 		xhr.send();
 	},
 	end : function() {
-		for (var i = 0; i < this._xhrbuff.length; i++) {
-			if (this._xhrbuff[i]) {
-				this._xhrbuff[i].abort();
-				this._xhrbuff[i] = null;
+		for (var i = 0; i < this._xhrBuff.length; i++) {
+			if (this._xhrBuff[i]) {
+				this._xhrBuff[i].abort();
+				this._xhrBuff[i] = null;
 			}
 		}
 		var xhr = new XMLHttpRequest();
@@ -996,12 +1090,12 @@ var {$APP_PREFIX} = {
 				} else {
 					(in_cb_send)(APP_ERR_GENERIC);
 				}
-				self._xhrbuff.unChainRef(xhr);
+				self._xhrBuff.unChainRef(xhr);
 			};
 		})(this);
 		xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
 		xhr.send(in_data);
-		this._xhrbuff.chainRef(xhr);
+		this._xhrBuff.chainRef(xhr);
 		return true;
 	},
 	_send_1by1 : function(in_url, in_data, in_cb_send) {
@@ -1051,13 +1145,19 @@ var {$APP_PREFIX} = {
 				} else {
 					in_cb_poll(err, null);
 				}
-				self._xhrbuff.unChainRef(xhr);
+				self._xhrBuff.unChainRef(xhr);
 			};
 		})(this);
 		var url = '{$URL_RECEIVE}';
-		xhr.open('GET', url.replace(/{$R_CLIENTID}/, this._id), true);
+		url = url.replace(/{$R_CLIENTID}/, this._id);
+		if (this._pollTarget.length > 0) {
+			url = url.replace(/{$R_TARGET}/, this._pollTarget.join(','));
+		} else {
+			url = url.replace(/{$R_TARGET}/, '');
+		}
+		xhr.open('GET', url, true);
 		xhr.send();
-		this._xhrbuff.chainRef(xhr);
+		this._xhrBuff.chainRef(xhr);
 	},
 	browseAllData : function(in_cb_browse) {
 		var xhr = new XMLHttpRequest();
@@ -1117,6 +1217,7 @@ var p2p = {
 	hello2nd : function(p) {
 		if (p.me.inArray(this.helloTo)) {
 			this.partner = this.helloTo;
+			{$APP_PREFIX}.appendPollTarget(this.partner);
 			this.state = this.C.S_APP_WAITING;
 			this.timestamp = (new Date()).getTime();
 			(this.appStarted)(true);
@@ -1155,12 +1256,12 @@ var p2p = {
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
 				var dat = eval('(' + obj.DATA + ')');
-				if (dat[this.C.HELLO] == this.name) {
-					p.me.push(obj.NAME);
+				if (dat[this.C.HELLO] == {$APP_PREFIX}.myId()) {
+					p.me.push(obj.ID);
 				} else if (dat[this.C.HELLO]) {
-					p.him.push(obj.NAME);
+					p.him.push(obj.ID);
 				} else {
-					p.none.push(obj.NAME);
+					p.none.push(obj.ID);
 				}
 			}
 			if (this.state == this.C.S_HELLO1) {
@@ -1235,7 +1336,12 @@ var p2p = {
 	}
 };
 
+// ToDo : implement remove ID to ignore
+// ToDo : test for this.
+
 EOJS;
 }
+
+exit;
 
 ?>
