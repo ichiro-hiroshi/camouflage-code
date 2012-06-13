@@ -850,26 +850,12 @@ var gMap = {
 	},
 };
 
-function obj2json(in_obj)
-{
-	var json = [];
-	for (var prop in in_obj) {
-		var value = in_obj[prop]; 
-		if (typeof value == 'string') {
-			value = "'" + value + "'";
-		}
-		json.push('"' + prop + '": ' + value);
-	}
-	return "{" + json.join(", ") + "}";
-}
-
 function cb_receive(in_err, in_data)
 {
 	if (in_err == APP_ERR_SUCCESS) {
 		for (var i = 0; i < in_data.length; i++) {
 			var obj = in_data[i];
-			var dat = eval('(' + obj.DATA + ')');
-			gMap.updateObj(obj.NAME, dat.y, dat.x, dat.dy, dat.dx);
+			gMap.updateObj(obj.NAME, obj.DATA.y, obj.DATA.x, obj.DATA.dy, obj.DATA.dx);
 			gMap.updateView();
 		}
 	} else {
@@ -895,7 +881,7 @@ function cb_start(in_started)
 			if (gMap.updatePos(in_e.keyCode)) {
 				DEBUG.text('keydown : ' + in_e.keyCode);
 				gCanvas.transform(in_e.keyCode);
-				ConnJS.send2(obj2json(gMap.pos), cb_send);
+				ConnJS.send2(gMap.pos, cb_send);
 				var ms = 150;
 				window.setTimeout(
 					function() {
@@ -919,8 +905,7 @@ function browse(in_canvas)
 			}
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
-				var dat = eval('(' + obj.DATA + ')');
-				gMap.updateObj(obj.NAME, dat.y, dat.x, dat.dy, dat.dx);
+				gMap.updateObj(obj.NAME, obj.DATA.y, obj.DATA.x, obj.DATA.dy, obj.DATA.dx);
 			}
 			gMap.make2DView(in_canvas);
 		});
