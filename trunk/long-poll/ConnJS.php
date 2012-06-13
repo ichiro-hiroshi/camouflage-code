@@ -893,7 +893,7 @@ function appStarted(in_started)
 	if (in_started) {
 		report(p2p.name + ' vs ' + {$APP_PREFIX}.hisId2Name(p2p.partner));
 	} else {
-		report('ng');
+		report('ng (appStarted)');
 	}
 }
 
@@ -903,6 +903,7 @@ function recvAppData()
 
 function lostConnection()
 {
+	report('ng (lostConnection)');
 }
 
 var name = 'No.' + Math.floor(Math.random() * 100);
@@ -1095,6 +1096,9 @@ var {$APP_PREFIX} = {
 			}
 		}
 		return ret;
+	},
+	resetPollTarget : function() {
+		this._pollTarget = [];
 	},
 	appendPollTarget : function(in_target_id) {
 		if (!this._pollTarget.inArray(in_target_id)) {
@@ -1295,26 +1299,27 @@ var p2p = {
 		if (p.me.length > 0) {
 			this.helloTo = p.me.randomEntry();
 			this.state = this.C.S_HELLO2;
-			this.send(null);
 		} else if (p.none.length > 0) {
 			this.helloTo = p.none.randomEntry();
 			this.state = this.C.S_HELLO2;
-			this.send(null);
 		} else {
-			return;
+			this.helloTo = null;
+			this.state = this.C.S_HELLO1;
 		}
+		this.send(null);
 	},
 	hello2nd : function(p) {
 		if (p.me.inArray(this.helloTo)) {
 			this.send(null);
-			this.browse();
+			window.setTimeout((function(self) {
+				return function() {
+					self.browse();
+				};
+			})(this), Math.floor(Math.random() * 500));
 		} else if (p.none.inArray(this.helloTo)) {
 			return;
 		} else {
-			// exists in "p.him" or not exists
-			this.helloTo = null;
-			this.state = this.C.S_HELLO1;
-			this.send(null);
+			this.hello1st(p);
 		}
 	},
 	browse : function() {
@@ -1334,21 +1339,21 @@ var p2p = {
 		}
 		for (var i = 0; i < in_data.length; i++) {
 			var obj = in_data[i];
-			if (obj.ID == this.helloTo) {
-				if (obj.DATA[this.C.HELLO] != {$APP_PREFIX}.myId()) {
-					continue;
-				}
-				this.partner = this.helloTo;
-				{$APP_PREFIX}.appendPollTarget(this.partner);
-				this.state = this.C.S_APP_WAITING;
-				this.timestamp = (new Date()).getTime();
-				(this.appStarted)(true);
-				return;
+			if (obj.ID != this.helloTo) {
+				continue;
 			}
+			if (obj.DATA[this.C.HELLO] != {$APP_PREFIX}.myId()) {
+				break;
+			}
+			this.partner = this.helloTo;
+			{$APP_PREFIX}.appendPollTarget(this.partner);
+			this.state = this.C.S_APP_WAITING;
+			this.timestamp = (new Date()).getTime();
+			(this.appStarted)(true);
+			return;
 		}
-		this.helloTo = null;
-		this.state = this.C.S_HELLO1;
-		this.send(null);
+		this.resetPollTarget();
+		this.hello1st(p);
 	},
 	cb_receive : function(in_err, in_data) {
 		switch (this.state) {
@@ -1389,10 +1394,21 @@ var p2p = {
 				(this.lostConnection)();
 				return;
 			}
+			for (var i = 0; i < in_data.length; i++) {
+				var obj = in_data[i];
+				if (obj.ID != this.partner) {
+					continue;
+				}
+				if (obj.DATA[this.C.HELLO] != {$APP_PREFIX}.myId()) {
+					{$APP_PREFIX}.end();
+					(this.lostConnection)();
+					return;
+				}
+			}
 			break;
 		case this.C.S_UNKNOWN :
 		default :
-			return;
+			break;
 		}
 	},
 	cb_send : function(in_err) {
