@@ -779,8 +779,11 @@ if (array_key_exists(CMD_TEST, $_GET)) {
 		$URL_TEST_DB = URL_TEST_DB;
 		print <<<EOTEST
 <style type='text/css'>
-DIV.f1 {
+DIV.f11 {
 	height: 150px;
+}
+DIV.f12 {
+	height: 75px;
 }
 DIV.f2 {
 	height: 450px;
@@ -799,14 +802,20 @@ IFRAME {
 <table>
 <tr>
 	<td>
-		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
-		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
-		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
-		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
-		<div class='f1'><iframe src='{$URL_TEST_JS}'></iframe></div>
+<!--
+		<div class='f11'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f11'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f11'><iframe src='{$URL_TEST_JS}'></iframe></div>
+-->
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
+		<div class='f12'><iframe src='{$URL_TEST_JS}'></iframe></div>
 	</td>
 	<td>
-		<!--<div class='f2'><iframe src='{$URL_TEST_DB}'></iframe></div>-->
+		<div class='f2'><iframe src='{$URL_TEST_DB}'></iframe></div>
 	</td>
 </tr>
 </table>
@@ -936,6 +945,84 @@ var APP_ERR_CCDB_NOID = '{$APP_ERR_CCDB_NOID}';
 var APP_ERR_CCDB_TIMEOUT = '{$APP_ERR_CCDB_TIMEOUT}';
 var APP_ERR_GENERIC = '{$APP_ERR_GENERIC}';
 
+var serializer = {
+	_obj2txt : function(o) {
+		var type = typeof(o);
+		if (o === null) {
+			return 'null';
+		}
+		var value = o.toString();
+		switch (type) {
+		case 'string' :
+			return '"' + value + '"';
+			break;
+		case 'boolean' :
+		case 'number' :
+			return value;
+			break;
+		case 'object' :
+			if (typeof(o.length) == 'undefined') {
+				var props = [];
+				for (var prop in o) {
+					props.push(prop + ':' + this._obj2txt(o[prop]));
+				}
+				return '{' + props.join(',') + '}';
+			} else {
+				var nodes = value.split(',');
+				for (var i = 0; i < nodes.length; i++) {
+					if (nodes[i].match(/[^0-9]/)) {
+						nodes[i] = '"' + nodes[i] + '"';
+					}
+				}
+				return '[' + nodes.join(',') + ']';
+			}
+			break;
+		default :
+			break;
+		}
+	},
+	test : function() {
+		var checker = function(o1, o2) {
+			if (typeof(o1) == 'object') {
+				for (var prop in o1) {
+					if (!checker(o1[prop], o2[prop])) {
+						return false;
+					}
+				}
+				return true;
+			} else {
+				if (o1 === o2) {
+					return true;
+				} else {
+					this._reason = o1 + ' !== ' + o2;
+					return false;
+				}
+			}
+		}
+		var org = {
+			p1 : {
+				p11 : 1,
+				p12 : false
+			},
+			p2 : ' ',
+			p3 : '',
+			p4 : null,
+			p5 : [1, 'x', 5],
+		};
+		if (checker(org, this.deserialize(this.serialize(org)))) {
+			alert('success');
+		} else {
+			alert('failed : ' + this._reason);
+		}
+	},
+	serialize : function(in_obj) {
+		return encodeURIComponent(this._obj2txt(in_obj));
+	},
+	deserialize : function(in_txt) {
+		return eval('(' + decodeURIComponent(in_txt) + ')');
+	}
+};
+
 (function() {
 	var ArrayExtension = {
 		index : function(in_entry) {
@@ -1002,6 +1089,7 @@ var {$APP_PREFIX} = {
 				&& (this._latest[tmp[i].ID].WRIT > tmp[i].WRIT)) {
 				ret.push(this._latest[tmp[i].ID]);
 			} else {
+				tmp[i].DATA = serializer.deserialize(tmp[i].DATA);
 				this._latest[tmp[i].ID] = tmp[i];
 				ret.push(tmp[i]);
 			}
@@ -1094,7 +1182,7 @@ var {$APP_PREFIX} = {
 			};
 		})(this);
 		xhr.open('POST', in_url.replace(/{$R_CLIENTID}/, this._id), true);
-		xhr.send(in_data);
+		xhr.send(serializer.serialize(in_data));
 		this._xhrBuff.chainRef(xhr);
 		return true;
 	},
@@ -1191,51 +1279,76 @@ var p2p = {
 		HELLO : 'hello',
 		DATA : 'app',
 	},
-	makeData : function(in_app_data) {
-		return '{'
-			+ this.C.HELLO + ': "' + (this.helloTo ? this.helloTo : '') + '", '
-			+ this.C.DATA + ': ' + in_app_data
-			+ '}';
-	},
-	hello1st : function(p) {
-		if (p.me.length > 0) {
-			this.helloTo = p.me.randomEntry();
-		} else if (p.none.length > 0) {
-			this.helloTo = p.none.randomEntry();
-		} else {
-			return;
-		}
-		this.state = this.C.S_HELLO2;
+	send : function(in_data) {
+		var obj = {};
+		obj[this.C.HELLO] = (this.helloTo ? this.helloTo : '');
+		obj[this.C.DATA] = in_data;
 		{$APP_PREFIX}.send2(
-			this.makeData(null),
+			obj,
 			(function(self) {
 				return function(in_err) {
 					self.cb_send(in_err);
 				};
 			})(this));
 	},
+	hello1st : function(p) {
+		if (p.me.length > 0) {
+			this.helloTo = p.me.randomEntry();
+			this.state = this.C.S_HELLO2;
+			this.send(null);
+		} else if (p.none.length > 0) {
+			this.helloTo = p.none.randomEntry();
+			this.state = this.C.S_HELLO2;
+			this.send(null);
+		} else {
+			return;
+		}
+	},
 	hello2nd : function(p) {
 		if (p.me.inArray(this.helloTo)) {
-			this.partner = this.helloTo;
-			{$APP_PREFIX}.appendPollTarget(this.partner);
-			this.state = this.C.S_APP_WAITING;
-			this.timestamp = (new Date()).getTime();
-			(this.appStarted)(true);
-			// not retuen
+			this.send(null);
+			this.browse();
 		} else if (p.none.inArray(this.helloTo)) {
 			return;
 		} else {
 			// exists in "p.him" or not exists
 			this.helloTo = null;
 			this.state = this.C.S_HELLO1;
+			this.send(null);
 		}
-		{$APP_PREFIX}.send2(
-			this.makeData(null),
+	},
+	browse : function() {
+		{$APP_PREFIX}.browseAllData(
 			(function(self) {
-				return function(in_err) {
-					self.cb_send(in_err);
+				return function(in_err, in_data) {
+					self.cb_browse(in_err, in_data);
 				};
 			})(this));
+	},
+	cb_browse : function(in_err, in_data) {
+		if (in_err != APP_ERR_SUCCESS) {
+			{$APP_PREFIX}.end();
+			(this.appStarted)(false);
+			this.init();
+			return;
+		}
+		for (var i = 0; i < in_data.length; i++) {
+			var obj = in_data[i];
+			if (obj.ID == this.helloTo) {
+				if (obj.DATA[this.C.HELLO] != {$APP_PREFIX}.myId()) {
+					continue;
+				}
+				this.partner = this.helloTo;
+				{$APP_PREFIX}.appendPollTarget(this.partner);
+				this.state = this.C.S_APP_WAITING;
+				this.timestamp = (new Date()).getTime();
+				(this.appStarted)(true);
+				return;
+			}
+		}
+		this.helloTo = null;
+		this.state = this.C.S_HELLO1;
+		this.send(null);
 	},
 	cb_receive : function(in_err, in_data) {
 		switch (this.state) {
@@ -1255,10 +1368,9 @@ var p2p = {
 			};
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
-				var dat = eval('(' + obj.DATA + ')');
-				if (dat[this.C.HELLO] == {$APP_PREFIX}.myId()) {
+				if (obj.DATA[this.C.HELLO] == {$APP_PREFIX}.myId()) {
 					p.me.push(obj.ID);
-				} else if (dat[this.C.HELLO]) {
+				} else if (obj.DATA[this.C.HELLO]) {
 					p.him.push(obj.ID);
 				} else {
 					p.none.push(obj.ID);
@@ -1292,13 +1404,7 @@ var p2p = {
 	},
 	cb_start : function(in_started) {
 		if (in_started) {
-			{$APP_PREFIX}.send2(
-				this.makeData(null),
-				(function(self) {
-					return function(in_err) {
-						self.cb_send(in_err);
-					};
-				})(this));
+			this.send(null);
 			this.timestamp = (new Date()).getTime();
 			this.state = this.C.S_HELLO1;
 		} else {
