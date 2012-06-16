@@ -913,12 +913,15 @@ function lostConnection()
 }
 
 var name = 'No.' + Math.floor(Math.random() * 1000);
-report(name);
 
 if (false) {
+	report(name);
 	{$APP_PREFIX}.start(name, cb_start, cb_receive);
 } else {
-	p2p.start(name, appStarted, recvAppData, lostConnection);
+	window.setTimeout(function() {
+		report(name);
+		p2p.start(name, appStarted, recvAppData, lostConnection);
+	}, Math.floor(Math.random() * 500));
 }
 
 </script>
@@ -1278,7 +1281,7 @@ var {$APP_PREFIX} = {
 };
 
 var p2p = {
-	C : {
+	_C : {
 		S_UNKNOWN : 0,
 		S_HELLO1 : 1,
 		S_HELLO2 : 2,
@@ -1289,77 +1292,90 @@ var p2p = {
 		HELLO : 'hello',
 		DATA : 'app',
 	},
-	sendHello : function(p) {
+	_sendHello : function(p) {
 		if (p.me.length > 0) {
-			this.helloTo = p.me.randomEntry();
-			this.state = this.C.S_HELLO2;
-		} else if (p.none.length > 0) {
-			this.helloTo = p.none.randomEntry();
-			this.state = this.C.S_HELLO2;
+			this._helloTo = p.me.randomEntry();
+			this._state = this._C.S_HELLO2;
 		} else {
-			this.helloTo = null;
-			this.state = this.C.S_HELLO1;
+			if (p.none.length > 0) {
+				this._helloTo = p.none.randomEntry();
+				this._state = this._C.S_HELLO2;
+			} else {
+				this._helloTo = null;
+				this._state = this._C.S_HELLO1;
+			}
 		}
-		this.send(null);
+		this._send(null);
 	},
-	hello2nd : function(p) {
-		if (p.me.inArray(this.helloTo)) {
-			this.send(null);
-			window.setTimeout((function(self) {
-				return function() {
-					self.browse();
-				};
-			})(this), Math.floor(Math.random() * 500));
-		} else if (p.none.inArray(this.helloTo)) {
-			return;
+	_checkHello : function(p) {
+		if (p.me.inArray(this._helloTo)) {
+			this._confirm();
 		} else {
-			this.sendHello(p);
+			if (p.none.inArray(this._helloTo)) {
+				return;
+			} else {
+				this._sendHello(p);
+			}
 		}
 	},
-	browse : function() {
+	_handleError : function() {
+		{$APP_PREFIX}.end();
+		switch (this._state) {
+		case this._C.S_UNKNOWN :
+		case this._C.S_HELLO1 :
+		case this._C.S_HELLO2 :
+			(this.appStarted)(false);
+			break;
+		case this._C.S_APP_WAITING :
+		case this._C.S_APP_CURRENT :
+			(this.lostConnection)();
+			break;
+		default :
+			break;
+		}
+		if (this._timer) {
+			window.clearTimeout(this._timer);
+		}
+		this._init();
+	},
+	_confirm : function() {
 		{$APP_PREFIX}.browseAllData(
 			(function(self) {
 				return function(in_err, in_data) {
-					self.cb_browse(in_err, in_data);
+					if (in_err != APP_ERR_SUCCESS) {
+						self._handleError();
+						return;
+					}
+					for (var i = 0; i < in_data.length; i++) {
+						var obj = in_data[i];
+						if (obj.ID != self._helloTo) {
+							continue;
+						}
+						if (obj.DATA[self._C.HELLO] != {$APP_PREFIX}.myId()) {
+							break;
+						}
+						self._partner = self._helloTo;
+						{$APP_PREFIX}.appendPollTarget(self._partner);
+						self._state = self._C.S_APP_WAITING;
+						self._timestamp = (new Date()).getTime();
+						(self.appStarted)(true);
+						return;
+					}
+					{$APP_PREFIX}.resetPollTarget();
+					self._helloTo = null;
+					self._state = self._C.S_HELLO1;
+					self._send(null);
 				};
 			})(this));
 	},
-	cb_browse : function(in_err, in_data) {
+	_cb_receive : function(in_err, in_data) {
 		if (in_err != APP_ERR_SUCCESS) {
-			{$APP_PREFIX}.end();
-			(this.appStarted)(false);
-			this.init();
+			this._handleError();
 			return;
 		}
-		for (var i = 0; i < in_data.length; i++) {
-			var obj = in_data[i];
-			if (obj.ID != this.helloTo) {
-				continue;
-			}
-			if (obj.DATA[this.C.HELLO] != {$APP_PREFIX}.myId()) {
-				break;
-			}
-			this.partner = this.helloTo;
-			{$APP_PREFIX}.appendPollTarget(this.partner);
-			this.state = this.C.S_APP_WAITING;
-			this.timestamp = (new Date()).getTime();
-			(this.appStarted)(true);
-			return;
-		}
-		{$APP_PREFIX}.resetPollTarget();
-		this.sendHello(p);
-	},
-	cb_receive : function(in_err, in_data) {
-		switch (this.state) {
-		case this.C.S_HELLO1 :
-		case this.C.S_HELLO2 :
-			if ((in_err != APP_ERR_SUCCESS) ||
-				((new Date()).getTime() - this.timestamp > this.C.TIMEOUT_HELLO)) {
-				{$APP_PREFIX}.end();
-				(this.appStarted)(false);
-				this.init();
-				return;
-			}
+		switch (this._state) {
+		case this._C.S_HELLO1 :
+		case this._C.S_HELLO2 :
 			var p = {
 				me : [],
 				him : [],
@@ -1367,34 +1383,29 @@ var p2p = {
 			};
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
-				if (obj.DATA[this.C.HELLO] == {$APP_PREFIX}.myId()) {
+				if (obj.DATA[this._C.HELLO] == {$APP_PREFIX}.myId()) {
 					p.me.push(obj.ID);
-				} else if (obj.DATA[this.C.HELLO]) {
+				} else if (obj.DATA[this._C.HELLO]) {
 					p.him.push(obj.ID);
 				} else {
 					p.none.push(obj.ID);
 				}
 			}
-			if (this.state == this.C.S_HELLO1) {
-				this.sendHello(p);
-			} else if (this.state == this.C.S_HELLO2) {
-				this.hello2nd(p);
+			if (this._state == this._C.S_HELLO1) {
+				this._sendHello(p);
+			} else if (this._state == this._C.S_HELLO2) {
+				this._checkHello(p);
 			}
 			break;
-		case this.C.S_APP_WAITING :
-		case this.C.S_APP_CURRENT :
-			if (in_err != APP_ERR_SUCCESS) {
-				{$APP_PREFIX}.end();
-				(this.lostConnection)();
-				return;
-			}
+		case this._C.S_APP_WAITING :
+		case this._C.S_APP_CURRENT :
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
-				if (obj.ID != this.partner) {
+				if (obj.ID != this._partner) {
 					continue;
 				}
-				if (obj.DATA[this.C.HELLO] == {$APP_PREFIX}.myId()) {
-					this.recvAppData(obj.DATA[this.C.DATA]);
+				if (obj.DATA[this._C.HELLO] == {$APP_PREFIX}.myId()) {
+					this.recvAppData(obj.DATA[this._C.DATA]);
 					break;
 				} else {
 					{$APP_PREFIX}.end();
@@ -1403,61 +1414,53 @@ var p2p = {
 				}
 			}
 			break;
-		case this.C.S_UNKNOWN :
+		case this._C.S_UNKNOWN :
 		default :
 			break;
 		}
 	},
-	send : function(in_data) {
+	_send : function(in_data) {
 		var obj = {};
-		obj[this.C.HELLO] = (this.helloTo ? this.helloTo : '');
-		obj[this.C.DATA] = in_data;
+		obj[this._C.HELLO] = (this._helloTo ? this._helloTo : '');
+		obj[this._C.DATA] = in_data;
 		{$APP_PREFIX}.send2(
 			obj,
 			(function(self) {
 				return function(in_err) {
-					self.cb_send(in_err);
+					if (in_err != APP_ERR_SUCCESS) {
+						self._handleError();
+						return;
+					}
 				};
 			})(this));
 	},
-	cb_send : function(in_err) {
-		if (in_err != APP_ERR_SUCCESS) {
-			{$APP_PREFIX}.end();
-			switch (this.state) {
-			case this.C.S_UNKNOWN :
-			case this.C.S_HELLO1 :
-			case this.C.S_HELLO2 :
-				(this.appStarted)(false);
-				break;
-			case this.C.S_APP_WAITING :
-			case this.C.S_APP_CURRENT :
-				(this.lostConnection)();
-				break;
-			default :
-				break;
-			}
-			this.init();
-		}
-	},
-	cb_start : function(in_started) {
+	_cb_start : function(in_started) {
 		if (in_started) {
-			this.timestamp = (new Date()).getTime();
-			this.state = this.C.S_HELLO1;
-			this.send(null);
+			this._timestamp = (new Date()).getTime();
+			this._state = this._C.S_HELLO1;
+			this._send(null);
+			this._timer = window.setTimeout(
+				(function(self) {
+					return function() {
+						if ((self._state == self._C.S_HELLO1) || (self._state == self._C.S_HELLO2)) {
+							self._handleError();
+						}
+					};
+				})(this),
+				this._C.TIMEOUT_HELLO);
 		} else {
-			{$APP_PREFIX}.end();
-			(this.appStarted)(false);
-			this.init();
+			this._handleError();
 		}
 	},
-	init : function() {
-		this.state = this.C.S_UNKNOWN;
-		this.timestamp = 0;
-		this.helloTo = null;
-		this.partner = null;
+	_init : function() {
+		this._state = this._C.S_UNKNOWN;
+		this._timestamp = 0;
+		this._timer = null;
+		this._helloTo = null;
+		this._partner = null;
 	},
 	start : function(playre_name, appStarted, recvAppData, lostConnection) {
-		this.init();
+		this._init();
 		this.name = playre_name;
 		this.appStarted = appStarted;
 		this.recvAppData = recvAppData;
@@ -1466,30 +1469,24 @@ var p2p = {
 			this.name,
 			(function(self) {
 				return function(in_started) {
-					self.cb_start(in_started);
+					self._cb_start(in_started);
 				};
 			})(this),
 			(function(self) {
 				return function(in_err, in_data) {
-					self.cb_receive(in_err, in_data);
+					self._cb_receive(in_err, in_data);
 				};
 			})(this));
 	},
 	sendAppData : function(in_data) {
-		if ((this.state == this.C.S_APP_WAITING) || (this.state == this.C.S_APP_CURRENT)) {
-			this.send(in_data);
+		if ((this._state == this._C.S_APP_WAITING) || (this._state == this._C.S_APP_CURRENT)) {
+			this._send(in_data);
 			return true;
 		} else {
 			return false;
 		}
 	}
 };
-
-// ToDo : implement remove ID to ignore
-// ToDo : test for this.
-// ToDo : impl timeout-related
-// ToDo : impl retry-related
-
 
 EOJS;
 }
