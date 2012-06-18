@@ -891,8 +891,9 @@ function cb_send(in_err)
 function appStarted(in_started)
 {
 	if (in_started) {
-		report(p2p.name + ' vs ' + {$APP_PREFIX}.hisId2Name(p2p.partner));
-		p2p.sendAppData(' ... hello, ' + {$APP_PREFIX}.hisId2Name(p2p.partner) + '! from ' + p2p.name);
+		var info = p2p.getInfo();
+		report(info.name + ' (' + info.current + ') vs ' + {$APP_PREFIX}.hisId2Name(info.partner));
+		p2p.sendAppData(' ... hello, ' + {$APP_PREFIX}.hisId2Name(info.partner) + '! from ' + info.name);
 	} else {
 		report('ng (appStarted)');
 	}
@@ -921,7 +922,7 @@ if (false) {
 	window.setTimeout(function() {
 		report(name);
 		p2p.start(name, appStarted, recvAppData, lostConnection);
-	}, Math.floor(Math.random() * 500));
+	}, Math.floor(Math.random() * 5000));
 }
 
 </script>
@@ -1289,6 +1290,7 @@ var p2p = {
 		S_APP_CURRENT : 4,
 		TIMEOUT_HELLO : 10 * 1000,
 		TIMEOUT_APP : 60 * 1000,
+		STARTTIME : 'starttime',
 		HELLO : 'hello',
 		DATA : 'app',
 	},
@@ -1311,9 +1313,7 @@ var p2p = {
 		if (p.me.inArray(this._helloTo)) {
 			this._confirm();
 		} else {
-			if (p.none.inArray(this._helloTo)) {
-				return;
-			} else {
+			if (!p.none.inArray(this._helloTo)) {
 				this._sendHello(p);
 			}
 		}
@@ -1324,11 +1324,11 @@ var p2p = {
 		case this._C.S_UNKNOWN :
 		case this._C.S_HELLO1 :
 		case this._C.S_HELLO2 :
-			(this.appStarted)(false);
+			(this._appStarted)(false);
 			break;
 		case this._C.S_APP_WAITING :
 		case this._C.S_APP_CURRENT :
-			(this.lostConnection)();
+			(this._lostConnection)();
 			break;
 		default :
 			break;
@@ -1354,14 +1354,18 @@ var p2p = {
 						if (obj.DATA[self._C.HELLO] != {$APP_PREFIX}.myId()) {
 							break;
 						}
+						if (obj.DATA[self._C.STARTTIME] == self._timestamp) {
+							break;
+						}
+						window.clearTimeout(self._timer);
 						self._partner = self._helloTo;
 						{$APP_PREFIX}.appendPollTarget(self._partner);
-						self._state = self._C.S_APP_WAITING;
+						self._state = (obj.DATA[self._C.STARTTIME] > self._timestamp) ? self._C.S_APP_WAITING : self._C.S_APP_CURRENT;
+						(self._appStarted)(true);
 						self._timestamp = (new Date()).getTime();
-						(self.appStarted)(true);
+						self._timer = self._watchDogTimer([self._C.S_APP_WAITING, self._C.S_APP_CURRENT], self._C.TIMEOUT_APP);
 						return;
 					}
-					{$APP_PREFIX}.resetPollTarget();
 					self._helloTo = null;
 					self._state = self._C.S_HELLO1;
 					self._send(null);
@@ -1369,13 +1373,13 @@ var p2p = {
 			})(this));
 	},
 	_cb_receive : function(in_err, in_data) {
-		if (in_err != APP_ERR_SUCCESS) {
-			this._handleError();
-			return;
-		}
 		switch (this._state) {
 		case this._C.S_HELLO1 :
 		case this._C.S_HELLO2 :
+			if (in_err != APP_ERR_SUCCESS) {
+				this._handleError();
+				break;
+			}
 			var p = {
 				me : [],
 				him : [],
@@ -1398,20 +1402,28 @@ var p2p = {
 			}
 			break;
 		case this._C.S_APP_WAITING :
-		case this._C.S_APP_CURRENT :
+			if (in_err != APP_ERR_SUCCESS) {
+				this._handleError();
+				break;
+			}
 			for (var i = 0; i < in_data.length; i++) {
 				var obj = in_data[i];
 				if (obj.ID != this._partner) {
 					continue;
 				}
 				if (obj.DATA[this._C.HELLO] == {$APP_PREFIX}.myId()) {
-					this.recvAppData(obj.DATA[this._C.DATA]);
-					break;
+					this._recvAppData(obj.DATA[this._C.DATA]);
+					this._state = this._C.S_APP_CURRENT;
 				} else {
-					{$APP_PREFIX}.end();
-					(this.lostConnection)();
-					return;
+					{$APP_PREFIX}.resetPollTarget();
+					this._handleError();
 				}
+				break;
+			}
+			break;
+		case this._C.S_APP_CURRENT :
+			if (in_err != APP_ERR_SUCCESS) {
+				this._handleError();
 			}
 			break;
 		case this._C.S_UNKNOWN :
@@ -1422,6 +1434,7 @@ var p2p = {
 	_send : function(in_data) {
 		var obj = {};
 		obj[this._C.HELLO] = (this._helloTo ? this._helloTo : '');
+		obj[this._C.STARTTIME] = this._timestamp;
 		obj[this._C.DATA] = in_data;
 		{$APP_PREFIX}.send2(
 			obj,
@@ -1429,28 +1442,20 @@ var p2p = {
 				return function(in_err) {
 					if (in_err != APP_ERR_SUCCESS) {
 						self._handleError();
-						return;
 					}
 				};
 			})(this));
 	},
-	_cb_start : function(in_started) {
-		if (in_started) {
-			this._timestamp = (new Date()).getTime();
-			this._state = this._C.S_HELLO1;
-			this._send(null);
-			this._timer = window.setTimeout(
-				(function(self) {
-					return function() {
-						if ((self._state == self._C.S_HELLO1) || (self._state == self._C.S_HELLO2)) {
-							self._handleError();
-						}
-					};
-				})(this),
-				this._C.TIMEOUT_HELLO);
-		} else {
-			this._handleError();
-		}
+	_watchDogTimer : function(in_states, in_timeout) {
+		return window.setTimeout(
+			(function(self) {
+				return function() {
+					if (in_states.inArray(self._state)) {
+						self._handleError();
+					}
+				};
+			})(this),
+			in_timeout);
 	},
 	_init : function() {
 		this._state = this._C.S_UNKNOWN;
@@ -1461,15 +1466,22 @@ var p2p = {
 	},
 	start : function(playre_name, appStarted, recvAppData, lostConnection) {
 		this._init();
-		this.name = playre_name;
-		this.appStarted = appStarted;
-		this.recvAppData = recvAppData;
-		this.lostConnection = lostConnection;
+		this._name = playre_name;
+		this._appStarted = appStarted;
+		this._recvAppData = recvAppData;
+		this._lostConnection = lostConnection;
 		{$APP_PREFIX}.start(
-			this.name,
+			this._name,
 			(function(self) {
 				return function(in_started) {
-					self._cb_start(in_started);
+					if (!in_started) {
+						self._handleError();
+						return;
+					}
+					self._timestamp = (new Date()).getTime();
+					self._state = self._C.S_HELLO1;
+					self._send(null);
+					self._timer = self._watchDogTimer([self._C.S_HELLO1, self._C.S_HELLO2], self._C.TIMEOUT_HELLO);
 				};
 			})(this),
 			(function(self) {
@@ -1479,11 +1491,23 @@ var p2p = {
 			})(this));
 	},
 	sendAppData : function(in_data) {
-		if ((this._state == this._C.S_APP_WAITING) || (this._state == this._C.S_APP_CURRENT)) {
+		if (this._state == this._C.S_APP_CURRENT) {
+			this._state = this._C.S_APP_WAITING;
 			this._send(in_data);
 			return true;
 		} else {
 			return false;
+		}
+	},
+	getInfo : function() {
+		if ((this._state == this._C.S_APP_WAITING) || (this._state == this._C.S_APP_CURRENT)) {
+			return {
+				name : this._name,
+				partner : this._partner,
+				current : (this._state == this._C.S_APP_CURRENT) ? true : false
+			};
+		} else {
+			return null;
 		}
 	}
 };
