@@ -888,11 +888,11 @@ function cb_send(in_err)
 
 // p2p
 
-function appStarted(in_started)
+function appStarted(in_started, in_wait_time)
 {
 	if (in_started) {
 		var info = p2p.getInfo();
-		report(info.name + ' (' + info.current + ') vs ' + {$APP_PREFIX}.hisId2Name(info.partner));
+		report(info.name + ' (' + (in_wait_time > 0 ? '1st' : '2nd') + ') vs ' + {$APP_PREFIX}.hisId2Name(info.partner));
 		p2p.sendAppData(' ... hello, ' + {$APP_PREFIX}.hisId2Name(info.partner) + '! from ' + info.name);
 	} else {
 		report('ng (appStarted)');
@@ -1286,8 +1286,7 @@ var p2p = {
 		S_UNKNOWN : 0,
 		S_HELLO1 : 1,
 		S_HELLO2 : 2,
-		S_APP_WAITING : 3,
-		S_APP_CURRENT : 4,
+		S_APPLICATION : 3,
 		TIMEOUT_HELLO : 10 * 1000,
 		TIMEOUT_APP : 60 * 1000,
 		STARTTIME : 'starttime',
@@ -1324,10 +1323,9 @@ var p2p = {
 		case this._C.S_UNKNOWN :
 		case this._C.S_HELLO1 :
 		case this._C.S_HELLO2 :
-			(this._appStarted)(false);
+			(this._appStarted)(false, 0);
 			break;
-		case this._C.S_APP_WAITING :
-		case this._C.S_APP_CURRENT :
+		case this._C.S_APPLICATION :
 			(this._lostConnection)();
 			break;
 		default :
@@ -1335,6 +1333,7 @@ var p2p = {
 		}
 		if (this._timer) {
 			window.clearTimeout(this._timer);
+			this._timer = null;
 		}
 		this._init();
 	},
@@ -1354,16 +1353,16 @@ var p2p = {
 						if (obj.DATA[self._C.HELLO] != {$APP_PREFIX}.myId()) {
 							break;
 						}
-						if (obj.DATA[self._C.STARTTIME] == self._timestamp) {
+						if (obj.DATA[self._C.STARTTIME] == self._starttime) {
 							break;
 						}
 						window.clearTimeout(self._timer);
+						self._timer = self._watchDogTimer([self._C.S_APPLICATION], self._C.TIMEOUT_APP);
 						self._partner = self._helloTo;
 						{$APP_PREFIX}.appendPollTarget(self._partner);
-						self._state = (obj.DATA[self._C.STARTTIME] > self._timestamp) ? self._C.S_APP_WAITING : self._C.S_APP_CURRENT;
-						(self._appStarted)(true);
-						self._timestamp = (new Date()).getTime();
-						self._timer = self._watchDogTimer([self._C.S_APP_WAITING, self._C.S_APP_CURRENT], self._C.TIMEOUT_APP);
+						self._state = self._C.S_APPLICATION;
+						self._send(null);
+						(self._appStarted)(true, (obj.DATA[self._C.STARTTIME] - self._starttime));
 						return;
 					}
 					self._helloTo = null;
@@ -1401,7 +1400,7 @@ var p2p = {
 				this._checkHello(p);
 			}
 			break;
-		case this._C.S_APP_WAITING :
+		case this._C.S_APPLICATION :
 			if (in_err != APP_ERR_SUCCESS) {
 				this._handleError();
 				break;
@@ -1413,17 +1412,13 @@ var p2p = {
 				}
 				if (obj.DATA[this._C.HELLO] == {$APP_PREFIX}.myId()) {
 					this._recvAppData(obj.DATA[this._C.DATA]);
-					this._state = this._C.S_APP_CURRENT;
+					window.clearTimeout(this._timer);
+					this._timer = this._watchDogTimer([this._C.S_APPLICATION], this._C.TIMEOUT_APP);
 				} else {
 					{$APP_PREFIX}.resetPollTarget();
 					this._handleError();
 				}
 				break;
-			}
-			break;
-		case this._C.S_APP_CURRENT :
-			if (in_err != APP_ERR_SUCCESS) {
-				this._handleError();
 			}
 			break;
 		case this._C.S_UNKNOWN :
@@ -1434,17 +1429,23 @@ var p2p = {
 	_send : function(in_data) {
 		var obj = {};
 		obj[this._C.HELLO] = (this._helloTo ? this._helloTo : '');
-		obj[this._C.STARTTIME] = this._timestamp;
+		obj[this._C.STARTTIME] = this._starttime;
 		obj[this._C.DATA] = in_data;
-		{$APP_PREFIX}.send2(
+		if (!{$APP_PREFIX}.send2(
 			obj,
 			(function(self) {
 				return function(in_err) {
 					if (in_err != APP_ERR_SUCCESS) {
 						self._handleError();
+					} else {
+						if (self._sendq.length > 0) {
+							self._send(self._sendq.shift());
+						}
 					}
 				};
-			})(this));
+			})(this))) {
+			this._sendq.push(in_data);
+		}
 	},
 	_watchDogTimer : function(in_states, in_timeout) {
 		return window.setTimeout(
@@ -1459,10 +1460,11 @@ var p2p = {
 	},
 	_init : function() {
 		this._state = this._C.S_UNKNOWN;
-		this._timestamp = 0;
+		this._starttime = 0;
 		this._timer = null;
 		this._helloTo = null;
 		this._partner = null;
+		this._sendq = [];
 	},
 	start : function(playre_name, appStarted, recvAppData, lostConnection) {
 		this._init();
@@ -1478,7 +1480,7 @@ var p2p = {
 						self._handleError();
 						return;
 					}
-					self._timestamp = (new Date()).getTime();
+					self._starttime = (new Date()).getTime();
 					self._state = self._C.S_HELLO1;
 					self._send(null);
 					self._timer = self._watchDogTimer([self._C.S_HELLO1, self._C.S_HELLO2], self._C.TIMEOUT_HELLO);
@@ -1491,20 +1493,15 @@ var p2p = {
 			})(this));
 	},
 	sendAppData : function(in_data) {
-		if (this._state == this._C.S_APP_CURRENT) {
-			this._state = this._C.S_APP_WAITING;
+		if (this._state == this._C.S_APPLICATION) {
 			this._send(in_data);
-			return true;
-		} else {
-			return false;
 		}
 	},
 	getInfo : function() {
-		if ((this._state == this._C.S_APP_WAITING) || (this._state == this._C.S_APP_CURRENT)) {
+		if (this._state == this._C.S_APPLICATION) {
 			return {
 				name : this._name,
-				partner : this._partner,
-				current : (this._state == this._C.S_APP_CURRENT) ? true : false
+				partner : this._partner
 			};
 		} else {
 			return null;
