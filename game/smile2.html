@@ -1,7 +1,4 @@
-<!--
-<script type='text/javascript' src='ConnJS.php'></script>
--->
-<script>
+<script type='text/javascript'>
 
 var gSmileRand = {
 	_mod : 2048,
@@ -96,7 +93,7 @@ var gSmile = {
 	isFinished : function() {
 		return (this.canOpen == 0);
 	},
-	safe_open : function(in_player, in_x, in_y) {
+	safeOpen : function(in_player, in_x, in_y) {
 		var opened = [];
 		var cell = this.cells[in_y][in_x];
 		if (!cell.open) {
@@ -105,11 +102,25 @@ var gSmile = {
 			if (cell.risk == 0) {
 				var targets = this.arrounds(in_x, in_y);
 				for (var i = 0; i < targets.length; i++) {
-					opened = opened.concat(this.safe_open(in_player, targets[i][0], targets[i][1]));
+					opened = opened.concat(this.safeOpen(in_player, targets[i][0], targets[i][1]));
 				}
 			}
 			opened.push({x : in_x, y : in_y, r : cell.risk});
 			this.canOpen--;
+		}
+		return opened;
+	},
+	allOpen : function() {
+		var opened = [];
+		for (var y = 0; y < this.cells.length; y++) {
+			for (var x = 0; x < this.cells[y].length; x++) {
+				var cell = this.cells[y][x];
+				if (!cell.open) {
+					cell.open = true;
+					opened.push({x : x, y : y, r : cell.risk, b : cell.bomb});
+					this.canOpen--;
+				}
+			}
 		}
 		return opened;
 	},
@@ -130,7 +141,7 @@ var gSmile = {
 			/* alert('game over'); */
 			return null;
 		} else {
-			return this.safe_open(in_player, in_x, in_y);
+			return this.safeOpen(in_player, in_x, in_y);
 		}
 	},
 	riversi : function(in_player, in_x, in_y) {
@@ -174,84 +185,189 @@ var gSmile = {
 	}
 };
 
-/* sample UI */
+</script>
+<div id='field'></div>
+<script type='text/javascript' src='ConnJS.php'></script>
+<script>
+
+function dp(in_txt)
+{
+	if (console && console.log) {
+		console.log(in_txt);
+	}
+}
 
 HTMLTableElement.prototype.td = function(in_x, in_y)
 {
 	return this.rows[in_y].cells[in_x];
 };
 
-HTMLTableCellElement.prototype.pos = function()
+HTMLTableElement.prototype.createCells = function(in_x, in_y, in_callback)
 {
-	return {x : this.cellIndex, y : this.parentNode.rowIndex};
-};
-
-var X = 7;
-var Y = 7;
-
-gSmile.init(X, Y, 1, 4096);
-
-var turn = 'blue';
-
-gTurn = {
-	cnt : 0,
-	player : ['red', 'blue'],
-	next : function() {
-		this.cnt++;
-	},
-	prev : function() {
-		this.cnt--;
-	},
-	name : function() {
-		return this.player[this.cnt % this.player.length];
+	for (var y = 0; y < in_y; y++) {
+		var tr = document.createElement('TR');
+		for (var x = 0; x < in_x; x++) {
+			var td = document.createElement('TD');
+			if (in_callback) {
+				(in_callback)(td, x, y);
+			}
+			tr.appendChild(td);
+		}
+		this.appendChild(tr);
 	}
 };
 
-function cell_open(in_pos)
-{
-	gTurn.next();
-	var opened = gSmile.open(gTurn.name(), in_pos.x, in_pos.y);
-	if (opened) {
-		if (opened.length == 0) {
-			gTurn.prev();
-			return;
+Sample2pUI = {
+	_cnt : 0,
+	_player : null,
+	_players : ['red', 'blue'],
+	_table : null,
+	_order : function() {
+		return this._players[this._cnt % this._players.length];
+	},
+	start : function(in_level, in_seed, in_first) {
+		gSmile.init(this._table.rows[0].cells.length, this._table.rows.length, in_level, in_seed);
+		this._player = this._players[(in_first ? 0 : 1)];
+		var tds = this._table.getElementsByTagName('TD');
+		for (var i = 0; i < tds.length; i++) {
+			tds.item(i).className = 'unknown';
 		}
-		opened = opened.concat(gSmile.riversi(gTurn.name(), in_pos.x, in_pos.y));
+	},
+	isStarted : function() {
+		return this._player ? true : false;
+	},
+	next : function() {
+		this._cnt++;
+	},
+	setupTable : function(in_x, in_y, in_elem) {
+		this._table = document.createElement('TABLE');
+		in_elem.appendChild(this._table);
+		this._table.createCells(in_x, in_y, (function(self) {
+			return function(in_td, in_x, in_y) {
+				in_td.className = 'default';
+				in_td.onclick = function() {
+					var pos = {x : in_x, y : in_y};
+					if (self._player == self._order()) {
+						if (self.openCell(pos)) {
+							self.next();
+							p2p.sendAppData(pos);
+						}
+					} else {
+						dp('wait!');
+					}
+				}
+			}
+		})(this));
+	},
+	openCell : function(in_pos) {
+		if (gSmile.isFinished()) {
+			return false;
+		}
+		var opened = gSmile.open(this._order(), in_pos.x, in_pos.y);
+		if (!opened) {
+			var opened = gSmile.allOpen();
+			while (cell = opened.pop()) {
+				var td = this._table.td(cell.x, cell.y);
+				if (cell.b) {
+					td.className = 'bomb';
+					td.innerHTML = '*';
+				} else {
+					td.innerHTML = cell.r;
+				}
+			}
+			// location.reload();
+			return false;
+		}
+		if (opened.length == 0) {
+			return false;
+		}
+		opened = opened.concat(gSmile.riversi(this._order(), in_pos.x, in_pos.y));
 		var totalms = 500;
 		var timeout = Math.ceil(totalms / opened.length);
-		var delay = (function() {
+		var delay = (function(self) {
+			var order = self._order();
 			return function() {
 				if (opened.length == 0) {
 					if (gSmile.isFinished()) {
+						var score = {};
+						for (i = 0; i < self._table.rows.length; i++) {
+							for (j = 0; j < self._table.rows[i].cells.length; j++) {
+								var cls = self._table.td(j, i).className;
+								if (typeof(score[cls]) == 'undefined') {
+									score[cls] = 1;
+								} else {
+									score[cls]++;
+								}
+							}
+						}
 						alert('finished');
+						for (var cls in score) {
+							if (cls == 'unknown') {
+								continue;
+							}
+							alert(cls + ' : ' + score[cls]);
+						}
 					}
 					return;
 				}
 				var pos = opened.pop();
-				var cell = field.td(pos.x, pos.y);
-				cell.innerHTML = pos.r;
-				cell.className = gTurn.name();
+				with (self._table.td(pos.x, pos.y)) {
+					innerHTML = pos.r;
+					className = order;
+				}
 				window.setTimeout(delay, timeout);
 			};
-		})();
+		})(this);
 		(delay)();
+		return true;
+	}
+};
+
+var LEVEL = 2;
+
+Sample2pUI.setupTable(10, 5, document.getElementById('field'));
+
+function appStarted(in_started, in_wait_time)
+{
+	if (in_started) {
+		if (in_wait_time > 0) {
+			dp('1st-player');
+			var rand = Math.floor(Math.random() * 1000);
+			p2p.sendAppData(rand);
+			Sample2pUI.start(LEVEL, rand, true);
+		} else {
+			dp('2nd-player');
+		}
 	} else {
-		alert('bomb!');
+		dp('error (appStarted)');
 	}
 }
 
-document.write('<table id="field">');
-for (i = 0; i < Y; i++) {
-	document.write('<tr>');
-	for (j = 0; j < X; j++) {
-		document.write('<td class="unknown" onclick="cell_open(this.pos());"></td>');
+function recvAppData(in_data)
+{
+	if (in_data) {
+		if (Sample2pUI.isStarted()) {
+			if (Sample2pUI.openCell(in_data)) {
+				Sample2pUI.next();
+			}
+		} else {
+			Sample2pUI.start(LEVEL, in_data, false);
+		}
+	} else {
+		dp('ignore null');
 	}
-	document.write('</tr>');
 }
-document.write('</table>');
+
+function lostConnection()
+{
+	dp('error (lostConnection)');
+}
+
+p2p.start('smile2-client', appStarted, recvAppData, lostConnection);
 
 </script>
 <style type='text/css'>
+
 TD {
 	width : 20px;
 	height : 23px;
@@ -262,6 +378,10 @@ TD {
 	color: #ffffff;
 	text-align: center;
 	text-shadow: -1px 0px 2px #666666, 0px -1px 2px #666666, 0px 1px 2px #666666, 0px 1px 2px #666666; 
+}
+TD.default {
+	border-color: #999999 #666666 #666666 #999999;
+	background-color: #cccccc;
 }
 TD.unknown {
 	border-color: #999999 #666666 #666666 #999999;
@@ -278,4 +398,10 @@ TD.blue {
 	background: -moz-linear-gradient(bottom, #6666cc, #ccccff);
 	background: -webkit-gradient(linear, right bottom, left top, from(#6666cc), to(#ccccff));
 }
+TD.bomb {
+	border-color: #999999 #666666 #666666 #999999;
+	background: -moz-linear-gradient(bottom, #999999, #666666);
+	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#666666));
+}
+
 </style>

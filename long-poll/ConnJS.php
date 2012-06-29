@@ -1106,11 +1106,7 @@ var {$APP_PREFIX} = {
 			}
 		}
 		ret.sort(function(e1, e2) {
-			if (e1.WRIT < e2.WRIT) {
-				return 1;
-			} else {
-				return 0;
-			}
+			return e1.WRIT - e2.WRIT;
 		});
 		return ret;
 	},
