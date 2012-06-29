@@ -1105,6 +1105,13 @@ var {$APP_PREFIX} = {
 				ret.push(tmp[i]);
 			}
 		}
+		ret.sort(function(e1, e2) {
+			if (e1.WRIT < e2.WRIT) {
+				return 1;
+			} else {
+				return 0;
+			}
+		});
 		return ret;
 	},
 	resetPollTarget : function() {
