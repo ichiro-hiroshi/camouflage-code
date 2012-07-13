@@ -1,0 +1,567 @@
+<script type='text/javascript'>
+
+var gSmileRand = {
+	_mod : 2048,
+	_seed : (new Date()).getTime(),
+	resetSeed : function(in_seed) {
+		this._seed = in_seed;
+	},
+	rand : function() {
+		this._seed = Math.abs((17 * this._seed - 1) % this._mod);
+		return this._seed / this._mod;
+	},
+};
+
+var gSmile = {
+	seed : -1,
+	level : -1,
+	cells : [],
+	firstTry : true,
+	canOpen : -1,
+	init : function(in_w, in_h, in_level, in_seed) {
+		this.level = in_level;
+		this.seed = in_seed;
+		this.canOpen = in_w * in_h;
+		gSmileRand.resetSeed(in_seed);
+		for (var i = 0; i < in_h; i++) {
+			this.cells[i] = [];
+			for (var j = 0; j < in_w; j++) {
+				if (Math.floor(gSmileRand.rand() * 10) < in_level) {
+					this.canOpen--;
+					this.cells[i][j] = {
+						open : false,
+						bomb : true,
+						risk : -1,
+						own : null
+					};
+				} else {
+					this.cells[i][j] = {
+						open : false,
+						bomb : false,
+						risk : -1,
+						own : null,
+					};
+				}
+			}
+		}
+		for (var i = 0; i < in_h; i++) {
+			for (var j = 0; j < in_w; j++) {
+				this.cells[i][j].risk = this.checkRisk(j, i);
+			}
+		}
+	},
+	inMap : function(in_x, in_y) {
+		if ((in_y < 0) || (this.cells.length <= in_y)) {
+			return false;
+		}
+		if ((in_x < 0) || (this.cells[in_y].length <= in_x)) {
+			return false;
+		}
+		return true;
+	},
+	arrounds : function(in_x, in_y) {
+		var ret = [];
+		var x = Number(in_x);
+		var y = Number(in_y);
+		var candidate = [
+			[x - 1, y - 1],
+			[x + 0, y - 1],
+			[x + 1, y - 1],
+			[x - 1, y + 0],
+			[x + 1, y + 0],
+			[x - 1, y + 1],
+			[x + 0, y + 1],
+			[x + 1, y + 1]
+		];
+		for (var i = 0; i < candidate.length; i++) {
+			if (this.inMap(candidate[i][0], candidate[i][1])) {
+				ret.push(candidate[i]);
+			}
+		}
+		return ret;
+	},
+	checkRisk : function(in_x, in_y) {
+		var risk = 0;
+		var targets = this.arrounds(in_x, in_y);
+		for (var i = 0; i < targets.length; i++) {
+			if (this.cells[targets[i][1]][targets[i][0]].bomb) {
+				risk++;
+			}
+		}
+		return risk;
+	},
+	isFinished : function() {
+		return (this.canOpen == 0);
+	},
+	safeOpen : function(in_player, in_x, in_y) {
+		var opened = [];
+		var cell = this.cells[in_y][in_x];
+		if (!cell.open) {
+			cell.open = true;
+			cell.own = in_player;
+			if (cell.risk == 0) {
+				var targets = this.arrounds(in_x, in_y);
+				for (var i = 0; i < targets.length; i++) {
+					opened = opened.concat(this.safeOpen(in_player, targets[i][0], targets[i][1]));
+				}
+			}
+			opened.push({x : in_x, y : in_y, r : cell.risk});
+			this.canOpen--;
+		}
+		return opened;
+	},
+	allOpen : function() {
+		var opened = [];
+		for (var y = 0; y < this.cells.length; y++) {
+			for (var x = 0; x < this.cells[y].length; x++) {
+				var cell = this.cells[y][x];
+				if (!cell.open) {
+					cell.open = true;
+					opened.push({x : x, y : y, r : cell.risk, b : cell.bomb});
+					this.canOpen--;
+				}
+			}
+		}
+		return opened;
+	},
+	open : function(in_player, in_x, in_y) {
+		var cell = this.cells[in_y][in_x];
+		if (this.firstTry) {
+			if (cell.bomb) {
+				cell.bomb = false;
+				var targets = this.arrounds(in_x, in_y);
+				for (var i = 0; i < targets.length; i++) {
+					this.cells[targets[i][1]][targets[i][0]].risk--;
+				}
+				this.canOpen++;
+			}
+			this.firstTry = false;
+		}
+		if (cell.bomb) {
+			/* alert('game over'); */
+			return null;
+		} else {
+			return this.safeOpen(in_player, in_x, in_y);
+		}
+	},
+	riversi : function(in_player, in_x, in_y) {
+		var reversed = [];
+		var targets = this.arrounds(in_x, in_y);
+		for (var i = 0; i < targets.length; i++) {
+			var x = targets[i][0];
+			var y = targets[i][1];
+			var v = {
+				dx : x - in_x,
+				dy : y - in_y,
+				op : false,
+				cl : false,
+				pool : []
+			};
+			do {
+				var cell = this.cells[y][x];
+				if (!cell.own) {
+					break;
+				}
+				if (cell.own == in_player) {
+					if (v.op) {
+						v.cl = true;
+					}
+					break;
+				} else {
+					v.op = true;
+				}
+				v.pool.push({x : x, y : y, r : cell.risk});
+				x += v.dx;
+				y += v.dy;
+			} while (this.inMap(x, y));
+			if (v.cl) {
+				reversed = reversed.concat(v.pool);
+			}
+		}
+		for (var i = 0; i < reversed.length; i++) {
+			this.cells[reversed[i].y][reversed[i].x].own = in_player;
+		}
+		return reversed;
+	},
+	getBorderCells : function() {
+		var ret = {
+			o : [],
+			c : []
+		};
+		for (var y1 = 0; y1 < this.cells.length; y1++) {
+			for (var x1 = 0; x1 < this.cells[y1].length; x1++) {
+				var c1 = this.cells[y1][x1];
+				if (c1.open && (c1.risk > 0)) {
+					ret.o.push({x : x1, y : y1, r : c1.risk});
+					var targets = this.arrounds(x1, y1);
+					for (var i = 0; i < targets.length; i++) {
+						var x2 = targets[i][0]
+						var y2 = targets[i][1];
+						var c2 = this.cells[y2][x2];
+						if (!c2.open) {
+							ret.c.push({x : x2, y : y2});
+						}
+					}
+				}
+			}
+		}
+		return ret;
+	}
+};
+
+</script>
+<script type='text/javascript'>
+
+var gAlgo = {
+	_C : {
+		SEP : ',',
+		RC : {
+			CONTINUE : 1,
+			FINISHED : 2,
+			ABNORMAL : 3
+		}
+	},
+	_src : {
+		o : { /* POS : risk, ... */ },
+		c : { /* POS : true, ... */ }
+	},
+	_dst : {
+		b : { /* POS : true, ... */ },
+		s : { /* POS : true, ... */ }
+	},
+	_xy2pos : function(x, y) {
+		return x + this._C.SEP + y;
+	},
+	_pos2xy : function(pos) {
+		var tmp = pos.split(this._C.SEP);
+		return {x : Number(tmp[0]), y : Number(tmp[1])};
+	},
+	_set : function(src, x, y, e) {
+		src[this._xy2pos(x, y)] = e;
+	},
+	// API
+	init : function() {
+		this._src = {o : {}, c : {}};
+		this._dst = {b : {}, s : {}};
+	},
+	_copy : function(src, dst) {
+		for (var prop in src) {
+			if (typeof(src[prop]) == 'object') {
+				dst[prop] = {};
+				this._copy(src[prop], dst[prop]);
+			} else {
+				dst[prop] = src[prop];
+			}
+		}
+	},
+	_backup : function() {
+		this._bk = {
+			_src : {},
+			_dst : {}
+		};
+		this._copy(this._src, this._bk._src);
+		this._copy(this._dst, this._bk._dst);
+	},
+	_restore : function() {
+		this.init();
+		this._copy(this._bk._src, this._src);
+		this._copy(this._bk._dst, this._dst);
+	},
+	// API
+	setInitOp : function(x, y, risk) {
+		this._set(this._src.o, x, y, risk);
+	},
+	// API
+	setInitCl : function(x, y) {
+		this._set(this._src.c, x, y, true);
+	},
+	_arround : function(pos, src) {
+		with (this._pos2xy(pos)) {
+			var cand = [
+				this._xy2pos(x - 1, y - 1),
+				this._xy2pos(x + 0, y - 1),
+				this._xy2pos(x + 1, y - 1),
+				this._xy2pos(x - 1, y + 0),
+				this._xy2pos(x + 1, y + 0),
+				this._xy2pos(x - 1, y + 1),
+				this._xy2pos(x + 0, y + 1),
+				this._xy2pos(x + 1, y + 1)
+			];
+		}
+		var ret = [];
+		for (var i = 0; i < cand.length; i++) {
+			var pos = cand[i];
+			if (typeof(src[pos]) != 'undefined') {
+				ret.push(pos);
+			}
+		}
+		return ret;
+	},
+	_arroundOp : function(pos) {
+		return this._arround(pos, this._src.o);
+	},
+	_arroundCl : function(pos) {
+		return this._arround(pos, this._src.c);
+	},
+	_findBomb : function(pos) {
+		// delete closed-cell
+		delete this._src.c[pos];
+		// add bomb
+		this._dst.b[pos] = true;
+		// risk-- because closed-bomb-cell is deleted
+		var op = this._arroundOp(pos);
+		for (var i = 0; i < op.length; i++) {
+			this._src.o[op[i]]--;
+		}
+	},
+	_findSafe : function(pos) {
+		// delete closed-cell
+		delete this._src.c[pos];
+		// add safe
+		this._dst.s[pos] = true;
+	},
+	_seek1st : function() {
+		for (var pos in this._src.o) {
+			if (this._src.o[pos] < 0) {
+				return this._C.RC.ABNORMAL;
+			}
+			var cl = this._arroundCl(pos);
+			if (this._src.o[pos] == 0) {
+				if (cl.length == 0) {
+					continue;
+				}
+				for (var i = 0; i < cl.length; i++) {
+					this._findSafe(cl[i]);
+				}
+			} else {
+				if (this._src.o[pos] < cl.length) {
+					continue;
+				}
+				if (this._src.o[pos] > cl.length) {
+					return this._C.RC.ABNORMAL;
+				}
+				for (var i = 0; i < cl.length; i++) {
+					this._findBomb(cl[i]);
+				}
+			}
+			return this._C.RC.CONTINUE;
+		}
+		return this._C.RC.FINISHED;
+	},
+	_seek2nd : function() {
+		var cl = {};
+		this._copy(this._src.c, cl);
+		for (var pos in cl) {
+			this._backup();
+			// Try & Error : assume pos is bomb
+			this._findBomb(pos);
+			do {
+				var ret = this._seek1st();
+			} while (ret == this._C.RC.CONTINUE);
+			this._restore();
+			if (ret == this._C.RC.ABNORMAL) {
+				this._findSafe(pos);
+				return this._C.RC.CONTINUE;
+			}
+		}
+		return this._C.RC.FINISHED;
+	},
+	// API
+	seek : function() {
+		var retry = true;
+		while (retry) {
+			if (this._seek1st() != this._C.RC.CONTINUE) {
+				if (this._seek2nd() != this._C.RC.CONTINUE) {
+					retry = false;
+				}
+			}
+		}
+		var ret = {bomb : [], safe : [], unknown : []};
+		for (var pos in this._dst.b) {
+			ret.bomb.push(this._pos2xy(pos));
+		}
+		for (var pos in this._dst.s) {
+			ret.safe.push(this._pos2xy(pos));
+		}
+		for (var pos in this._src.c) {
+			ret.unknown.push(this._pos2xy(pos));
+		}
+		return ret;
+	}
+};
+
+</script>
+<div id='field'></div>
+<script>
+
+HTMLTableElement.prototype.td = function(in_x, in_y)
+{
+	return this.rows[in_y].cells[in_x];
+};
+
+HTMLTableElement.prototype.createCells = function(in_x, in_y, in_callback)
+{
+	for (var y = 0; y < in_y; y++) {
+		var tr = document.createElement('TR');
+		for (var x = 0; x < in_x; x++) {
+			var td = document.createElement('TD');
+			if (in_callback) {
+				(in_callback)(td, x, y);
+			}
+			tr.appendChild(td);
+		}
+		this.appendChild(tr);
+	}
+};
+
+Sample1pUI = {
+	start : function(in_x, in_y, in_level, in_seed) {
+		this._table = document.createElement('TABLE');
+		this._table.createCells(in_x, in_y, (function(self) {
+			return function(in_td, in_x, in_y) {
+				in_td.className = 'unknown';
+				in_td.onclick = function() {
+					if (!self.openCell({x : in_x, y : in_y})) {
+						alert('Ugh!');
+					}
+				}
+			}
+		})(this));
+		gSmile.init(in_x, in_y, in_level, in_seed);
+		return this._table;
+	},
+	openCell : function(in_pos) {
+		if (gSmile.isFinished()) {
+			return false;
+		}
+		var opened = gSmile.open('open', in_pos.x, in_pos.y);
+		if (!opened) {
+			var opened = gSmile.allOpen();
+			while (cell = opened.pop()) {
+				var td = this._table.td(cell.x, cell.y);
+				if (cell.b) {
+					td.className = 'bomb';
+					td.innerHTML = '*';
+				} else {
+					td.innerHTML = cell.r;
+				}
+			}
+			return false;
+		}
+		if (opened.length == 0) {
+			return false;
+		}
+		opened = opened.concat(gSmile.riversi('open', in_pos.x, in_pos.y));
+		var totalms = 500;
+		var timeout = Math.ceil(totalms / opened.length);
+		var delay = (function(self) {
+			return function() {
+				if (opened.length == 0) {
+					if (gSmile.isFinished()) {
+						var score = {};
+						for (i = 0; i < self._table.rows.length; i++) {
+							for (j = 0; j < self._table.rows[i].cells.length; j++) {
+								var cls = self._table.td(j, i).className;
+								if (typeof(score[cls]) == 'undefined') {
+									score[cls] = 1;
+								} else {
+									score[cls]++;
+								}
+							}
+						}
+						alert('finished');
+						for (var cls in score) {
+							if (cls == 'unknown') {
+								continue;
+							}
+							alert(cls + ' : ' + score[cls]);
+						}
+					}
+					var border = gSmile.getBorderCells();
+					gAlgo.init();
+					for (var i = 0; i < border.o.length; i++) {
+						with (border.o[i]) {
+							gAlgo.setInitOp(x, y, r);
+						}
+					}
+					for (var i = 0; i < border.c.length; i++) {
+						with (border.c[i]) {
+							gAlgo.setInitCl(x, y);
+						}
+					}
+					var find = gAlgo.seek();
+					for (var i = 0; i < find.bomb.length; i++) {
+						with (find.bomb[i]) {
+							self._table.td(x, y).className = 'cb';
+						}
+					}
+					for (var i = 0; i < find.safe.length; i++) {
+						with (find.safe[i]) {
+							self._table.td(x, y).className = 'cs';
+						}
+					}
+					for (var i = 0; i < find.unknown.length; i++) {
+						with (find.unknown[i]) {
+							self._table.td(x, y).className = 'cu';
+						}
+					}
+					return;
+				}
+				var pos = opened.pop();
+				with (self._table.td(pos.x, pos.y)) {
+					innerHTML = pos.r;
+					className = 'open';
+				}
+				window.setTimeout(delay, timeout);
+			};
+		})(this);
+		(delay)();
+		return true;
+	}
+};
+
+document.getElementById('field').appendChild(Sample1pUI.start(10, 10, 2, Math.floor(Math.random() * 1000)));
+
+</script>
+<style type='text/css'>
+
+TD {
+	width : 20px;
+	height : 23px;
+	padding: 0px;
+	border-style: solid;
+	border-width: 1px;
+	border-radius : 3px;
+	color: #ffffff;
+	text-align: center;
+	text-shadow: -1px 0px 2px #666666, 0px -1px 2px #666666, 0px 1px 2px #666666, 0px 1px 2px #666666; 
+}
+TD.unknown {
+	border-color: #999999 #666666 #666666 #999999;
+	background: -moz-linear-gradient(bottom, #999999, #ffffff);
+	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#ffffff));
+}
+TD.open {
+	border-color: #6666cc #333399 #333399 #6666cc;
+	background: -moz-linear-gradient(bottom, #6666cc, #ccccff);
+	background: -webkit-gradient(linear, right bottom, left top, from(#6666cc), to(#ccccff));
+}
+TD.bomb {
+	border-color: #999999 #666666 #666666 #999999;
+	background: -moz-linear-gradient(bottom, #999999, #666666);
+	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#666666));
+}
+TD.cb {
+	border-color: #999999 #666666 #666666 #999999;
+	background-color: red;
+}
+TD.cs {
+	border-color: #999999 #666666 #666666 #999999;
+	background-color: green;
+}
+TD.cu {
+	border-color: #999999 #666666 #666666 #999999;
+	background-color: yellow;
+}
+
+</style>
