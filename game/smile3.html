@@ -183,6 +183,31 @@ var gSmile = {
 		}
 		return reversed;
 	},
+	getInsideCells : function() {
+		var ret = [];
+		for (var y1 = 0; y1 < this.cells.length; y1++) {
+			for (var x1 = 0; x1 < this.cells[y1].length; x1++) {
+				var c1 = this.cells[y1][x1];
+				if (!c1.open) {
+					var inside = true;
+					var targets = this.arrounds(x1, y1);
+					for (var i = 0; i < targets.length; i++) {
+						var x2 = targets[i][0]
+						var y2 = targets[i][1];
+						var c2 = this.cells[y2][x2];
+						if (c2.open) {
+							inside = false;
+							break;
+						}
+					}
+					if (inside) {
+						ret.push({x : x1, y : y1});
+					}
+				}
+			}
+		}
+		return ret;
+	},
 	getBorderCells : function() {
 		var ret = {
 			o : [],
@@ -348,19 +373,27 @@ var gAlgo = {
 		}
 		return this._C.RC.FINISHED;
 	},
-	_seek2nd : function() {
+	_seek2nd : function(try_bomb) {
 		var cl = {};
 		this._copy(this._src.c, cl);
 		for (var pos in cl) {
 			this._backup();
-			// Try & Error : assume pos is bomb
-			this._findBomb(pos);
+			// Try & Error
+			if (try_bomb) {
+				this._findBomb(pos);
+			} else {
+				this._findSafe(pos);
+			}
 			do {
 				var ret = this._seek1st();
 			} while (ret == this._C.RC.CONTINUE);
 			this._restore();
 			if (ret == this._C.RC.ABNORMAL) {
-				this._findSafe(pos);
+				if (try_bomb) {
+					this._findSafe(pos);
+				} else {
+					this._findBomb(pos);
+				}
 				return this._C.RC.CONTINUE;
 			}
 		}
@@ -371,8 +404,10 @@ var gAlgo = {
 		var retry = true;
 		while (retry) {
 			if (this._seek1st() != this._C.RC.CONTINUE) {
-				if (this._seek2nd() != this._C.RC.CONTINUE) {
-					retry = false;
+				if (this._seek2nd(true) != this._C.RC.CONTINUE) {
+					if (this._seek2nd(false) != this._C.RC.CONTINUE) {
+						retry = false;
+					}
 				}
 			}
 		}
@@ -384,7 +419,14 @@ var gAlgo = {
 			ret.safe.push(this._pos2xy(pos));
 		}
 		for (var pos in this._src.c) {
-			ret.unknown.push(this._pos2xy(pos));
+			var max = 0;
+			var op = this._arroundOp(pos);
+			for (var i = 0; i < op.length; i++) {
+				max = Math.max(max, this._src.o[op[i]] / this._arroundCl(op[i]).length);
+			}
+			var tmp = this._pos2xy(pos);
+			tmp.r = max;
+			ret.unknown.push(tmp);
 		}
 		return ret;
 	}
@@ -392,7 +434,12 @@ var gAlgo = {
 
 </script>
 <div id='field'></div>
-<script>
+<script type='text/javascript'>
+
+Array.prototype.random = function()
+{
+	return this[Math.floor(Math.random() * this.length)];
+};
 
 HTMLTableElement.prototype.td = function(in_x, in_y)
 {
@@ -415,30 +462,114 @@ HTMLTableElement.prototype.createCells = function(in_x, in_y, in_callback)
 };
 
 Sample1pUI = {
+	cnt : 0,
+	player : null,
+	players : ['blue', 'red'],
+	table : null,
+	order : function() {
+		return this.players[this.cnt % this.players.length];
+	},
+	next : function() {
+		this.cnt++;
+	},
 	start : function(in_x, in_y, in_level, in_seed) {
-		this._table = document.createElement('TABLE');
-		this._table.createCells(in_x, in_y, (function(self) {
+		this.player = this.players[Math.round(Math.random())];
+		if (this.order() != this.player) {
+			this.delay_enemy();
+		}
+		this.table = document.createElement('TABLE');
+		this.table.createCells(in_x, in_y, (function(self) {
 			return function(in_td, in_x, in_y) {
 				in_td.className = 'unknown';
 				in_td.onclick = function() {
-					if (!self.openCell({x : in_x, y : in_y})) {
-						alert('Ugh!');
+					if (self.order() == self.player) {
+						if (!self.openCell({x : in_x, y : in_y})) {
+							alert('Ugh!');
+						}
+					} else {
+						alert('wait!');
 					}
 				}
 			}
 		})(this));
 		gSmile.init(in_x, in_y, in_level, in_seed);
-		return this._table;
+		return this.table;
+	},
+	delay_enemy : function() {
+		var ms = 500;
+		window.setTimeout((function(self) {
+			return function() {
+				self.enemy();
+			};
+		})(this), ms);
+	},
+	debug : function(find) {
+		for (var i = 0; i < find.bomb.length; i++) {
+			with (find.bomb[i]) {
+				this.table.td(x, y).style.borderColor = 'red';
+			}
+		}
+		for (var i = 0; i < find.safe.length; i++) {
+			with (find.safe[i]) {
+				this.table.td(x, y).style.borderColor = 'green';
+			}
+		}
+		for (var i = 0; i < find.unknown.length; i++) {
+			with (find.unknown[i]) {
+				this.table.td(x, y).innerHTML = r;
+				this.table.td(x, y).style.borderColor = 'yellow';
+			}
+		}
+	},
+	enemy : function() {
+		var border = gSmile.getBorderCells();
+		gAlgo.init();
+		for (var i = 0; i < border.o.length; i++) {
+			with (border.o[i]) {
+				gAlgo.setInitOp(x, y, r);
+			}
+		}
+		for (var i = 0; i < border.c.length; i++) {
+			with (border.c[i]) {
+				gAlgo.setInitCl(x, y);
+			}
+		}
+		var find = gAlgo.seek();
+		// this.debug(find);
+		if (find.safe.length > 0) {
+			this.openCell(find.safe.random());
+		} else {
+			var pos = null;
+			var threshold = gSmile.level / 10;
+			if (find.unknown.length > 0) {
+				for (var i = 0; i < find.unknown.length; i++) {
+					if (find.unknown[i].r < threshold) {
+						pos = find.unknown[i];
+						break;
+					}
+				}
+			}
+			if (pos) {
+				this.openCell(pos);
+			} else {
+				var inside = gSmile.getInsideCells();
+				if (inside.length > 0) {
+					this.openCell(inside.random());
+				} else {
+					this.openCell(find.unknown.random());
+				}
+			}
+		}
 	},
 	openCell : function(in_pos) {
 		if (gSmile.isFinished()) {
 			return false;
 		}
-		var opened = gSmile.open('open', in_pos.x, in_pos.y);
+		var opened = gSmile.open(this.order(), in_pos.x, in_pos.y);
 		if (!opened) {
 			var opened = gSmile.allOpen();
 			while (cell = opened.pop()) {
-				var td = this._table.td(cell.x, cell.y);
+				var td = this.table.td(cell.x, cell.y);
 				if (cell.b) {
 					td.className = 'bomb';
 					td.innerHTML = '*';
@@ -451,7 +582,7 @@ Sample1pUI = {
 		if (opened.length == 0) {
 			return false;
 		}
-		opened = opened.concat(gSmile.riversi('open', in_pos.x, in_pos.y));
+		opened = opened.concat(gSmile.riversi(this.order(), in_pos.x, in_pos.y));
 		var totalms = 500;
 		var timeout = Math.ceil(totalms / opened.length);
 		var delay = (function(self) {
@@ -459,9 +590,9 @@ Sample1pUI = {
 				if (opened.length == 0) {
 					if (gSmile.isFinished()) {
 						var score = {};
-						for (i = 0; i < self._table.rows.length; i++) {
-							for (j = 0; j < self._table.rows[i].cells.length; j++) {
-								var cls = self._table.td(j, i).className;
+						for (i = 0; i < self.table.rows.length; i++) {
+							for (j = 0; j < self.table.rows[i].cells.length; j++) {
+								var cls = self.table.td(j, i).className;
 								if (typeof(score[cls]) == 'undefined') {
 									score[cls] = 1;
 								} else {
@@ -476,41 +607,18 @@ Sample1pUI = {
 							}
 							alert(cls + ' : ' + score[cls]);
 						}
-					}
-					var border = gSmile.getBorderCells();
-					gAlgo.init();
-					for (var i = 0; i < border.o.length; i++) {
-						with (border.o[i]) {
-							gAlgo.setInitOp(x, y, r);
+					} else {
+						if (self.order() == self.player) {
+							self.delay_enemy();
 						}
 					}
-					for (var i = 0; i < border.c.length; i++) {
-						with (border.c[i]) {
-							gAlgo.setInitCl(x, y);
-						}
-					}
-					var find = gAlgo.seek();
-					for (var i = 0; i < find.bomb.length; i++) {
-						with (find.bomb[i]) {
-							self._table.td(x, y).className = 'cb';
-						}
-					}
-					for (var i = 0; i < find.safe.length; i++) {
-						with (find.safe[i]) {
-							self._table.td(x, y).className = 'cs';
-						}
-					}
-					for (var i = 0; i < find.unknown.length; i++) {
-						with (find.unknown[i]) {
-							self._table.td(x, y).className = 'cu';
-						}
-					}
+					self.next();
 					return;
 				}
 				var pos = opened.pop();
-				with (self._table.td(pos.x, pos.y)) {
+				with (self.table.td(pos.x, pos.y)) {
 					innerHTML = pos.r;
-					className = 'open';
+					className = self.order();
 				}
 				window.setTimeout(delay, timeout);
 			};
@@ -541,27 +649,20 @@ TD.unknown {
 	background: -moz-linear-gradient(bottom, #999999, #ffffff);
 	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#ffffff));
 }
-TD.open {
+TD.blue {
 	border-color: #6666cc #333399 #333399 #6666cc;
 	background: -moz-linear-gradient(bottom, #6666cc, #ccccff);
 	background: -webkit-gradient(linear, right bottom, left top, from(#6666cc), to(#ccccff));
+}
+TD.red {
+	border-color: #cc6666 #993333 #993333 #cc6666;
+	background: -moz-linear-gradient(bottom, #cc6666, #ffcccc);
+	background: -webkit-gradient(linear, right bottom, left top, from(#cc6666), to(#ffcccc));
 }
 TD.bomb {
 	border-color: #999999 #666666 #666666 #999999;
 	background: -moz-linear-gradient(bottom, #999999, #666666);
 	background: -webkit-gradient(linear, right bottom, left top, from(#999999), to(#666666));
-}
-TD.cb {
-	border-color: #999999 #666666 #666666 #999999;
-	background-color: red;
-}
-TD.cs {
-	border-color: #999999 #666666 #666666 #999999;
-	background-color: green;
-}
-TD.cu {
-	border-color: #999999 #666666 #666666 #999999;
-	background-color: yellow;
 }
 
 </style>
