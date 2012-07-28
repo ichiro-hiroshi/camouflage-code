@@ -15,6 +15,7 @@ var gSmileRand = {
 var gSmile = {
 	seed : -1,
 	level : -1,
+	levelDenom : 10,
 	cells : [],
 	firstTry : true,
 	canOpen : -1,
@@ -26,7 +27,7 @@ var gSmile = {
 		for (var i = 0; i < in_h; i++) {
 			this.cells[i] = [];
 			for (var j = 0; j < in_w; j++) {
-				if (Math.floor(gSmileRand.rand() * 10) < in_level) {
+				if (Math.floor(gSmileRand.rand() * this.levelDenom) < in_level) {
 					this.canOpen--;
 					this.cells[i][j] = {
 						open : false,
@@ -194,6 +195,7 @@ var gSmile = {
 		return this._riversi(in_player, in_x, in_y, true);
 	},
 	getInsideCells : function() {
+		var risk = this.level / this.levelDenom;
 		var ret = [];
 		for (var y1 = 0; y1 < this.cells.length; y1++) {
 			for (var x1 = 0; x1 < this.cells[y1].length; x1++) {
@@ -211,7 +213,7 @@ var gSmile = {
 						}
 					}
 					if (inside) {
-						ret.push({x : x1, y : y1});
+						ret.push({x : x1, y : y1, r : risk});
 					}
 				}
 			}
@@ -247,23 +249,50 @@ var gSmile = {
 		var area = {w : 1, h : 1};
 		for (var i = 0; i < dirs.length; i++) {
 			var x = in_x;
-			while (this.inMap(x, in_y)) {
+			while (true) {
 				x = x + dirs[i];
-				if (this.cells[in_y][x].open) {
+				if (!this.inMap(x, in_y) || this.cells[in_y][x].open) {
 					break;
+				} else {
+					area.w++;
 				}
-				area.w++;
 			}
 			var y = in_y;
-			while (this.inMap(in_x, y)) {
+			while (true) {
 				y = y + dirs[i];
-				if (this.cells[y][in_x].open) {
+				if (!this.inMap(in_x, y) || this.cells[y][in_x].open) {
 					break;
+				} else {
+					area.h++;
 				}
-				area.h++;
 			}
 		}
-		return Math.ceil(area.w * area.h * 3 / 4);
+		return Math.ceil(area.w * area.h * (1 - this.level / this.levelDenom));
+	},
+	gameState : function(in_player) {
+		var o = 0;
+		var c = 0;
+		var player = {};
+		for (var y = 0; y < this.cells.length; y++) {
+			for (var x = 0; x < this.cells[y].length; x++) {
+				with (this.cells[y][x]) {
+					if (own) {
+						if (player[own]) {
+							player[own]++;
+						} else {
+							player[own] = 1;
+						}
+						o++;
+					} else {
+						c++;
+					}
+				}
+			}
+		}
+		return {
+			phase : (o / (o + c)),
+			profit : player[in_player] / o
+		};
 	}
 };
 
@@ -446,10 +475,14 @@ var gRiskFinder = {
 		}
 		var ret = {bomb : [], safe : [], unknown : []};
 		for (var pos in this._dst.b) {
-			ret.bomb.push(this._pos2xy(pos));
+			var tmp = this._pos2xy(pos);
+			tmp.r = 1;
+			ret.bomb.push(tmp);
 		}
 		for (var pos in this._dst.s) {
-			ret.safe.push(this._pos2xy(pos));
+			var tmp = this._pos2xy(pos);
+			tmp.r = 0;
+			ret.safe.push(tmp);
 		}
 		for (var pos in this._src.c) {
 			var max = 0;
@@ -564,32 +597,41 @@ Sample1pUI = {
 			}
 		}
 	},
-	enemy_0 : function(in_find, in_inside) {
-		if (in_find.safe.length > 0) {
-			this.openCell(in_find.safe.random());
-		} else {
-			var pos = null;
-			var threshold = gSmile.level / 10;
-			if (in_find.unknown.length > 0) {
-				for (var i = 0; i < in_find.unknown.length; i++) {
-					if (in_find.unknown[i].r < threshold) {
-						pos = in_find.unknown[i];
-						break;
-					}
-				}
-			}
-			if (pos) {
-				this.openCell(pos);
-			} else {
-				if (in_inside.length > 0) {
-					this.openCell(in_inside.random());
-				} else {
-					this.openCell(in_find.unknown.random());
-				}
-			}
+	calc_riskMini : function(in_cand) {
+		with (in_cand) {
+			return 11 / (0.1 + r) + gain + Math.pow(chance, 2 / 6);
 		}
 	},
-	enemy_1 : function(in_find, in_inside) {
+	calc_riskOpti : function(in_cand) {
+		with (in_cand) {
+			return 11 / (0.1 + r) + gain * 10 + Math.pow(chance, 3 / 6);
+		}
+	},
+	calc_chanceOpti : function(in_cand) {
+		with (in_cand) {
+			return 1.1 / (0.1 + r) + gain * 2 + Math.pow(chance, 4 / 6);
+		}
+	},
+	calc_chanceMax : function(in_cand) {
+		with (in_cand) {
+			return 1.1 / (0.1 + r) + gain  * 1 + Math.pow(chance, 5 / 6);
+		}
+	},
+	selectByCalc : function(in_cand, in_calc_func) {
+		for (var i = 0; i < in_cand.length; i++) {
+			in_cand[i].calc = in_calc_func(in_cand[i]);
+		}
+		in_cand.sort(function(e1, e2) {
+			return e2.calc - e1.calc;
+		});
+		/*
+			for (var i = 0; i < in_cand.length; i++) {
+				with (in_cand[i]) {
+					console.log('(' + x + ',' + y + ') gain:' + gain + ' chance:' + chance + ' r:' + r);
+				}
+			}
+		*/
+		return in_cand[0];
 	},
 	enemy : function() {
 		var border = gSmile.getBorderCells();
@@ -608,14 +650,9 @@ Sample1pUI = {
 		// this.debug(find);
 		/*
 			{
-				bomb : [
-					{x : XB1, y : YB1},
-					{x : XB2, y : YB2},
-					...
-				],
 				safe : [
-					{x : XS1, y : YS1},
-					{x : XS2, y : YS2},
+					{x : XS1, y : YS1, r : 0},
+					{x : XS2, y : YS2, r : 0},
 					...
 				],
 				unknown : [
@@ -628,15 +665,47 @@ Sample1pUI = {
 		var inside = gSmile.getInsideCells();
 		/*
 			[
-				{x : X1, y : Y1},
-				{x : X2, y : Y2},
+				{x : X1, y : Y1, r : R},
+				{x : X2, y : Y2, r : R},
 				...
 			]
 		*/
-		if (false) {
-			this.enemy_1(find, inside);
+		var cand = [];
+		cand = cand.concat(find.safe, find.unknown, inside);
+		for (var i = 0; i < cand.length; i++) {
+			var c = cand[i];
+			c.gain = gSmile.riversiCnt(this.order(), c.x, c.y);
+			c.chance = gSmile.chanceArea(c.x, c.y);
+		}
+		/*
+			[
+				{
+					x : X
+					y : Y
+					gain : n
+					chance : m
+					r : 0~1
+				},
+				...
+			]
+		*/
+		var state = gSmile.gameState(this.order());
+		/*
+			console.log('>>> phase  :' + state.phase);
+			console.log('>>> profit :' + state.profit);
+		*/
+		if (state.phase < 0.5) {
+			if (state.profit < 0.5) {
+				this.openCell(this.selectByCalc(cand, this.calc_chanceOpti));
+			} else {
+				this.openCell(this.selectByCalc(cand, this.calc_riskOpti));
+			}
 		} else {
-			this.enemy_0(find, inside);
+			if (state.profit < 0.5) {
+				this.openCell(this.selectByCalc(cand, this.calc_chanceMax));
+			} else {
+				this.openCell(this.selectByCalc(cand, this.calc_riskMini));
+			}
 		}
 	},
 	endingView : function() {
@@ -734,7 +803,7 @@ Sample1pUI.setHook(function(in_order) {
 		className = in_order;
 	}
 });
-document.getElementById('field').appendChild(Sample1pUI.start(10, 10, 2, Math.floor(Math.random() * 1000)));
+document.getElementById('field').appendChild(Sample1pUI.start(10, 5, 2, Math.floor(Math.random() * 1000)));
 
 </script>
 <style type='text/css'>
