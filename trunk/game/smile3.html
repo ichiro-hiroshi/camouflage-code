@@ -571,8 +571,7 @@ Sample1pUI = {
 		gSmile.init(in_x, in_y, in_level, in_seed);
 		return this.table;
 	},
-	delay_enemy : function() {
-		var ms = 500;
+	delay_enemy : function(ms) {
 		window.setTimeout((function(self) {
 			return function() {
 				self.enemy();
@@ -770,7 +769,7 @@ Sample1pUI = {
 						self.endingView()
 					} else {
 						if (self.order() == self.player) {
-							self.delay_enemy();
+							self.delay_enemy(totalms * 2);
 						}
 						self.next();
 					}
@@ -803,7 +802,8 @@ Sample1pUI.setHook(function(in_order) {
 		className = in_order;
 	}
 });
-document.getElementById('field').appendChild(Sample1pUI.start(10, 5, 2, Math.floor(Math.random() * 1000)));
+
+document.getElementById('field').appendChild(Sample1pUI.start(15, 10, 3, Math.floor(Math.random() * 1000)));
 
 </script>
 <style type='text/css'>
