@@ -145,7 +145,7 @@ var gSmile = {
 			return this.safeOpen(in_player, in_x, in_y);
 		}
 	},
-	_riversi : function(in_player, in_x, in_y, in_simulate) {
+	_reversi : function(in_player, in_x, in_y, in_simulate) {
 		var reversed = [];
 		var targets = this.arrounds(in_x, in_y);
 		for (var i = 0; i < targets.length; i++) {
@@ -188,11 +188,11 @@ var gSmile = {
 			return reversed;
 		}
 	},
-	riversi : function(in_player, in_x, in_y) {
-		return this._riversi(in_player, in_x, in_y, false);
+	reversi : function(in_player, in_x, in_y) {
+		return this._reversi(in_player, in_x, in_y, false);
 	},
-	riversiCnt : function(in_player, in_x, in_y) {
-		return this._riversi(in_player, in_x, in_y, true);
+	reversiCnt : function(in_player, in_x, in_y) {
+		return this._reversi(in_player, in_x, in_y, true);
 	},
 	getInsideCells : function() {
 		var risk = this.level / this.levelDenom;
@@ -571,7 +571,8 @@ Sample1pUI = {
 		gSmile.init(in_x, in_y, in_level, in_seed);
 		return this.table;
 	},
-	delay_enemy : function(ms) {
+	delay_enemy : function() {
+		var ms = 500;
 		window.setTimeout((function(self) {
 			return function() {
 				self.enemy();
@@ -673,7 +674,7 @@ Sample1pUI = {
 		cand = cand.concat(find.safe, find.unknown, inside);
 		for (var i = 0; i < cand.length; i++) {
 			var c = cand[i];
-			c.gain = gSmile.riversiCnt(this.order(), c.x, c.y);
+			c.gain = gSmile.reversiCnt(this.order(), c.x, c.y);
 			c.chance = gSmile.chanceArea(c.x, c.y);
 		}
 		/*
@@ -759,7 +760,7 @@ Sample1pUI = {
 		if (opened.length == 0) {
 			return false;
 		}
-		opened = opened.concat(gSmile.riversi(this.order(), in_pos.x, in_pos.y));
+		opened = opened.concat(gSmile.reversi(this.order(), in_pos.x, in_pos.y));
 		var totalms = 500;
 		var timeout = Math.ceil(totalms / opened.length);
 		var delay = (function(self) {
@@ -769,7 +770,7 @@ Sample1pUI = {
 						self.endingView()
 					} else {
 						if (self.order() == self.player) {
-							self.delay_enemy(totalms * 2);
+							self.delay_enemy();
 						}
 						self.next();
 					}
@@ -781,7 +782,11 @@ Sample1pUI = {
 				td.innerHTML = pos.r;
 				if ((pos.x == in_pos.x) && (pos.y == in_pos.y)) {
 					if (self.lastCell[order]) {
-						self.lastCell[order].className = order;
+						with (self.lastCell[order]) {
+							if (className.indexOf('-x') > 0) {
+								className = order;
+							}
+						}
 					}
 					td.className = order + '-x';
 					self.lastCell[order] = td;
@@ -803,7 +808,7 @@ Sample1pUI.setHook(function(in_order) {
 	}
 });
 
-document.getElementById('field').appendChild(Sample1pUI.start(15, 10, 3, Math.floor(Math.random() * 1000)));
+document.getElementById('field').appendChild(Sample1pUI.start(15, 10, 2, Math.floor(Math.random() * 1000)));
 
 </script>
 <style type='text/css'>
