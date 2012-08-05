@@ -1,0 +1,312 @@
+<div id='debug'></div>
+<script>
+
+function surface(in_size, in_color)
+{
+	this.piece = [];
+	for (var y = 0; y < in_size; y++) {
+		this.piece[y] = [];
+		for (var x = 0; x < in_size; x++) {
+			this.piece[y][x] = in_color;
+		}
+	}
+	this.edges = {};
+	var dirs = ['T', 'R', 'B', 'L'];
+	for (var i = 0; i < dirs.length; i++) {
+		this.edges[dirs[i]] = {
+			surface : null,
+			edge : null
+		};
+	}
+}
+
+var surfacePrototypes = {
+	attach : function(srcDir, dstDir, dstSurface) {
+		var srcSurface = this;
+		srcSurface.edges[srcDir] = {
+			surface : dstSurface,
+			edge : dstDir
+		};
+		dstSurface.edges[dstDir] = {
+			surface : srcSurface,
+			edge : srcDir
+		};
+	},
+	copyPiece : function() {
+		var ret = [];
+		for (var y = 0; y < this.piece.length; y++) {
+			ret[y] = [];
+			for (var x = 0; x < this.piece[y].length; x++) {
+				ret[y][x] = this.piece[y][x];
+			}
+		}
+		return ret;
+	},
+	getXYList : function(in_dir, in_col) {
+		var size = this.piece.length;
+		var getPiece = function(i) {
+			return {
+				T : {
+					x : in_col,
+					y : i
+				},
+				R : {
+					x : i,
+					y : (size - 1) - in_col
+				},
+				B : {
+					x : (size - 1) - in_col,
+					y : (size - 1) - i
+				},
+				L : {
+					x : (size - 1) - i,
+					y : in_col
+				}
+			}[in_dir];
+		};
+		var ret = [];
+		for (var i = 0; i < size; i++) {
+			ret.push(getPiece(i));
+		}
+		return ret;
+	},
+	getNextSurface : function(in_dir) {
+		var nextEdge = {
+			T : 'B',
+			R : 'L',
+			B : 'T',
+			L : 'R'
+		}[this.edges[in_dir].edge];
+		return {
+			s : this.edges[in_dir].surface,
+			d : nextEdge
+		};
+	},
+	getRoundSurfaces : function(in_dir) {
+		var ret = [{s : this, d : in_dir}];
+		var next = null;
+		while (true) {
+			with (ret[ret.length - 1]) {
+				next = s.getNextSurface(d);
+			}
+			if (next.s == this) {
+				break;
+			} else {
+				ret.push(next);
+			}
+		}
+		return ret;
+	},
+	rotate : function(in_delta) {
+		/*
+				default :
+					7 8 9
+					4 5 6
+					1 2 3
+				in_delta : 1
+					9 6 3
+					8 5 2
+					7 4 1
+				in_delta : 2
+					3 2 1
+					6 5 4
+					9 8 7
+				in_delta : 3
+					1 4 7
+					2 5 8
+					3 6 9
+		*/
+		var copy = this.copyPiece();
+		var size = copy.length;
+		var max = size - 1;
+		for (var y = 0; y < size; y++) {
+			for (var x = 0; x < size; x++) {
+				switch (in_delta) {
+				case 1 :
+					this.piece[x][max - y] = copy[y][x];
+					break;
+				case 2 :
+					this.piece[max - y][max - x] = copy[y][x];
+					break;
+				case 3 :
+					this.piece[max - x][y] = copy[y][x];
+					break;
+				default :
+					break;
+				}
+			}
+		}
+	}
+};
+
+for (var prop in surfacePrototypes) {
+	surface.prototype[prop] = surfacePrototypes[prop];
+}
+
+var cube = {
+	dim : 6,
+	size : -1,
+	surfaces : [],
+	createCube : function(in_size) {
+		this.size = in_size;
+		for (var i = 0; i < this.dim; i++) {
+			this.surfaces[i] = new surface(this.size, i);
+		}
+		/*
+					(5)
+					1,2
+					3,4
+
+				(3) (4)
+				1,2 2,1
+				3,4 3,4
+
+			(1) (2)
+			1,2 1,2
+			3,4 3,4
+
+			(0)
+			1,2
+			3,4
+		*/
+		var s = this.surfaces;
+		// top-line
+		s[1].attach('T', 'L', s[3]);
+		s[3].attach('T', 'L', s[5]);
+		s[5].attach('T', 'L', s[1]);
+		// center-line
+		s[0].attach('T', 'B', s[1]);
+		s[1].attach('R', 'L', s[2]);
+		s[2].attach('T', 'B', s[3]);
+		s[3].attach('R', 'L', s[4]);
+		s[4].attach('T', 'B', s[5]);
+		s[5].attach('R', 'L', s[0]);
+		// bottom-line
+		s[0].attach('R', 'B', s[2]);
+		s[2].attach('R', 'B', s[4]);
+		s[4].attach('R', 'B', s[0]);
+	},
+	rotate1 : function(in_dim, in_xy, in_col, in_delta) {
+		var dir = in_xy ? 'T' : 'R';
+		var surfaces = this.surfaces[in_dim].getRoundSurfaces(dir);
+		var rounds = surfaces.length;
+		var delta = in_delta % rounds;
+		if (delta < 0) {
+			delta = rounds + delta;
+		}
+		var tmp = {
+			// piece
+			pi : [],
+			// position (x, y)
+			xy : []
+		};
+		for (var i = 0; i < surfaces.length; i++) {
+			with (surfaces[i].s) {
+				tmp.pi.push(copyPiece());
+				tmp.xy.push(getXYList(dir, in_col));
+			}
+		}
+		for (var i = 0; i < surfaces.length; i++) {
+			// source
+			var srcpi = tmp.pi[i];
+			var srcxy = tmp.xy[i];
+			// destination
+			var dstpi = surfaces[(i + delta) % rounds].s.piece;
+			var dstxy = tmp.xy[(i + delta) % rounds];
+			// rotate
+			for (var j = 0; j < srcxy.length; j++) {
+				dstpi[dstxy[j].y][dstxy[j].x] = srcpi[srcxy[j].y][srcxy[j].x];
+			}
+		}
+	},
+	rotate2 : function(in_dim, in_xy, in_col, in_delta) {
+		var ret = (function() {
+			switch (in_col) {
+			case 0 :
+				if (in_xy) {
+					return ['L', in_delta];
+				} else {
+					return ['B', 3 - in_delta];
+				}
+			case (this.size - 1) :
+				if (in_xy) {
+					return ['R', 3 - in_delta];
+				} else {
+					return ['T', in_delta];
+				}
+			default :
+				return null;
+			}
+		})();
+		if (ret) {
+			(this.surfaces[in_dim].getNextSurface(ret[0])).s.rotate(ret[1]);
+		}
+	},
+	rotate : function(in_dim, in_xy, in_col, in_delta) {
+		/*
+			- in_dim : surface id
+			- in_xy :
+				- true : x
+				- false : y
+			- in_col : 0 ~ (this.size - 1)
+			- in_delta : move-count
+		*/
+		this.rotate1(in_dim, in_xy, in_col, in_delta);
+		this.rotate2(in_dim, in_xy, in_col, in_delta);
+	},
+	debugElement : function() {
+		var div = document.createElement('DIV');
+		for (var i = 0; i < this.dim; i++) {
+			var table = document.createElement('TABLE');
+			for (var y = 0; y < this.size; y++) {
+				var tr = document.createElement('TR');
+				for (var x = 0; x < this.size; x++) {
+					var td = document.createElement('TD');
+					td.className = 'c' + this.surfaces[i].piece[y][x];
+					tr.appendChild(td);
+				}
+				table.appendChild(tr);
+			}
+			div.appendChild(table);
+		}
+		return div;
+	}
+};
+
+function dp()
+{
+	var elem = cube.debugElement();
+	with (document.getElementById('debug')) {
+		if (firstChild) {
+			replaceChild(elem, firstChild);
+		} else {
+			appendChild(elem);
+		}
+	}
+}
+
+var X = true;
+var Y = false;
+
+// test
+cube.createCube(4);
+
+cube.rotate(0, X, 0, 2);
+cube.rotate(0, X, 3, 2);
+
+cube.rotate(0, Y, 0, 2);
+cube.rotate(0, Y, 3, 2);
+
+dp();
+
+</script>
+<style type='text/css'>
+#debug TABLE {border-collapse: collapse; margin-bottom: 2px;}
+#debug TD {border: solid 1px black; width: 16px; height: 16px; padding: 0px; margin: 0px;}
+#debug .c0 {background-color: yellow;}
+#debug .c1 {background-color: red;}
+#debug .c2 {background-color: orange;}
+#debug .c3 {background-color: blue;}
+#debug .c4 {background-color: green;}
+#debug .c5 {background-color: white;}
+</style>
