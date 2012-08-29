@@ -1,6 +1,21 @@
 <div id='debug'></div>
 <script>
 
+function dp2dim(arr)
+{
+	if (!console) {
+		return;
+	}
+	console.log(arr.length + 'x' + arr.length);
+	for (var y = 0; y < arr.length; y++) {
+		var pool = [];
+		for (var x = 0; x < arr[y].length; x++) {
+			pool.push('(' + x + ',' + y + ')=' + arr[y][x]);
+		}
+		console.log(pool.join(', '));
+	}
+}
+
 function surface(in_size, in_color)
 {
 	this.piece = [];
@@ -32,12 +47,48 @@ var surfacePrototypes = {
 			edge : srcDir
 		};
 	},
-	copyPiece : function() {
+	copyPiece : function(in_left_turn) {
 		var ret = [];
-		for (var y = 0; y < this.piece.length; y++) {
+		var size = this.piece.length;
+		var max = size - 1;
+		for (var y = 0; y < size; y++) {
 			ret[y] = [];
-			for (var x = 0; x < this.piece[y].length; x++) {
-				ret[y][x] = this.piece[y][x];
+			for (var x = 0; x < size; x++) {
+				/*
+					default :
+						1 2 3
+						4 5 6
+						7 8 9
+				*/
+				switch (in_left_turn) {
+				case 1 :
+					/*
+						7 4 1
+						8 5 2 --> default
+						9 6 3
+					*/
+					ret[y][x] = this.piece[x][max - y];
+					break;
+				case 2 :
+					/*
+						9 8 7
+						6 5 4 --> default
+						3 2 1
+					*/
+					ret[y][x] = this.piece[max - y][max - x];
+					break;
+				case 3 :
+					/*
+						3 6 9
+						2 5 8 --> default
+						1 4 7
+					*/
+					ret[y][x] = this.piece[max - x][y];
+					break;
+				default :
+					ret[y][x] = this.piece[y][x];
+					break;
+				}
 			}
 		}
 		return ret;
@@ -51,15 +102,15 @@ var surfacePrototypes = {
 					y : i
 				},
 				R : {
-					x : i,
-					y : (size - 1) - in_col
+					x : (size - 1) - i,
+					y : in_col
 				},
 				B : {
-					x : (size - 1) - in_col,
+					x : in_col,
 					y : (size - 1) - i
 				},
 				L : {
-					x : (size - 1) - i,
+					x : i,
 					y : in_col
 				}
 			}[in_dir];
@@ -78,18 +129,18 @@ var surfacePrototypes = {
 			L : 'R'
 		}[this.edges[in_dir].edge];
 		return {
-			s : this.edges[in_dir].surface,
-			d : nextEdge
+			su : this.edges[in_dir].surface,
+			di : nextEdge
 		};
 	},
 	getRoundSurfaces : function(in_dir) {
-		var ret = [{s : this, d : in_dir}];
+		var ret = [{su : this, di : in_dir}];
 		var next = null;
 		while (true) {
 			with (ret[ret.length - 1]) {
-				next = s.getNextSurface(d);
+				next = su.getNextSurface(di);
 			}
-			if (next.s == this) {
+			if (next.su == this) {
 				break;
 			} else {
 				ret.push(next);
@@ -97,45 +148,8 @@ var surfacePrototypes = {
 		}
 		return ret;
 	},
-	rotate : function(in_delta) {
-		/*
-				default :
-					7 8 9
-					4 5 6
-					1 2 3
-				in_delta : 1
-					9 6 3
-					8 5 2
-					7 4 1
-				in_delta : 2
-					3 2 1
-					6 5 4
-					9 8 7
-				in_delta : 3
-					1 4 7
-					2 5 8
-					3 6 9
-		*/
-		var copy = this.copyPiece();
-		var size = copy.length;
-		var max = size - 1;
-		for (var y = 0; y < size; y++) {
-			for (var x = 0; x < size; x++) {
-				switch (in_delta) {
-				case 1 :
-					this.piece[x][max - y] = copy[y][x];
-					break;
-				case 2 :
-					this.piece[max - y][max - x] = copy[y][x];
-					break;
-				case 3 :
-					this.piece[max - x][y] = copy[y][x];
-					break;
-				default :
-					break;
-				}
-			}
-		}
+	leftRotate : function(in_delta) {
+		this.piece = this.copyPiece(in_delta);
 	}
 };
 
@@ -145,6 +159,8 @@ for (var prop in surfacePrototypes) {
 
 var cube = {
 	dim : 6,
+	/* surfaces per round */
+	spr : 4,
 	size : -1,
 	surfaces : [],
 	createCube : function(in_size) {
@@ -186,60 +202,69 @@ var cube = {
 		s[2].attach('R', 'B', s[4]);
 		s[4].attach('R', 'B', s[0]);
 	},
-	rotate1 : function(in_dim, in_xy, in_col, in_delta) {
-		var dir = in_xy ? 'T' : 'R';
-		var surfaces = this.surfaces[in_dim].getRoundSurfaces(dir);
-		var rounds = surfaces.length;
-		var delta = in_delta % rounds;
-		if (delta < 0) {
-			delta = rounds + delta;
-		}
-		var tmp = {
-			// piece
-			pi : [],
-			// position (x, y)
-			xy : []
-		};
+	rotate1 : function(in_dim, in_dir, in_col, in_delta) {
+		var surfaces = this.surfaces[in_dim].getRoundSurfaces(in_dir);
+		var tmp = [];
 		for (var i = 0; i < surfaces.length; i++) {
-			with (surfaces[i].s) {
-				tmp.pi.push(copyPiece());
-				tmp.xy.push(getXYList(dir, in_col));
+			with (surfaces[i]) {
+				tmp.push({
+					pi : su.copyPiece(0),
+					xy : su.getXYList(di, in_col)
+				});
 			}
 		}
 		for (var i = 0; i < surfaces.length; i++) {
 			// source
-			var srcpi = tmp.pi[i];
-			var srcxy = tmp.xy[i];
+			var src = i;
+			var spi = tmp[src].pi;
+			var sxy = tmp[src].xy;
 			// destination
-			var dstpi = surfaces[(i + delta) % rounds].s.piece;
-			var dstxy = tmp.xy[(i + delta) % rounds];
+			var dst = (i + in_delta) % surfaces.length;
+			var dpi = surfaces[dst].su.piece;
+			var dxy = tmp[dst].xy;
 			// rotate
-			for (var j = 0; j < srcxy.length; j++) {
-				dstpi[dstxy[j].y][dstxy[j].x] = srcpi[srcxy[j].y][srcxy[j].x];
+			for (var j = 0; j < sxy.length; j++) {
+				dpi[dxy[j].y][dxy[j].x] = spi[sxy[j].y][sxy[j].x];
 			}
 		}
 	},
-	rotate2 : function(in_dim, in_xy, in_col, in_delta) {
-		var ret = (function() {
-			switch (in_col) {
-			case 0 :
-				if (in_xy) {
-					return ['L', in_delta];
-				} else {
-					return ['B', 3 - in_delta];
-				}
-			case (this.size - 1) :
-				if (in_xy) {
-					return ['R', 3 - in_delta];
-				} else {
-					return ['T', in_delta];
-				}
+	rotate2 : function(in_dim, in_dir, in_col, in_delta) {
+		var ret = (function(self) {
+			switch (in_dir + in_col) {
+			case 'B0' :
+				/*
+					| 2 3
+					| 5 6
+					v 8 9
+				*/
+				return ['L', self.spr - in_delta];
+			case 'R0' :
+				/*
+					---->
+					4 5 6
+					7 8 9
+				*/
+				return ['T', in_delta];
+			case 'B' + (self.size - 1) :
+				/*
+					1 2 |
+					4 5 |
+					7 8 v
+				*/
+				return ['R', in_delta];
+			case 'R' + (self.size - 1) :
+				/*
+					1 2 3
+					4 5 6
+					---->
+				*/
+				return ['B', self.spr - in_delta];
 			default :
 				return null;
 			}
-		})();
+		})(this);
 		if (ret) {
-			(this.surfaces[in_dim].getNextSurface(ret[0])).s.rotate(ret[1]);
+			(this.surfaces[in_dim].getNextSurface(ret[0])).su.leftRotate(ret[1]);
 		}
 	},
 	rotate : function(in_dim, in_xy, in_col, in_delta) {
@@ -251,10 +276,44 @@ var cube = {
 			- in_col : 0 ~ (this.size - 1)
 			- in_delta : move-count
 		*/
-		this.rotate1(in_dim, in_xy, in_col, in_delta);
-		this.rotate2(in_dim, in_xy, in_col, in_delta);
+		var dir = in_xy ? 'B' : 'R';
+		var delta = in_delta % this.spr;
+		if (delta < 0) {
+			delta = this.spr + delta;
+		}
+		this.rotate1(in_dim, dir, in_col, delta);
+		this.rotate2(in_dim, dir, in_col, delta);
 	},
-	debugElement : function() {
+	leftRotate : {'TR' : 1, 'LB' : 3, 'BL' : 1, 'RT' : 3},
+	getPieceData4View : function(in_dim, in_dim_name) {
+		var ret = {};
+		ret[in_dim_name] = this.surfaces[in_dim].piece;
+		var dirs = ['T', 'R', 'B', 'L'];
+		while (dirs.length > 0) {
+			var dir = dirs.pop();
+			var next = this.surfaces[in_dim].getNextSurface(dir);
+			if (typeof(this.leftRotate[dir + next.di]) == 'undefined') {
+				ret[dir] = next.su.copyPiece(0);
+			} else {
+				ret[dir] = next.su.copyPiece(this.leftRotate[dir + next.di]);
+			}
+		}
+		return ret;
+	},
+	dir2dim : function(in_dim, in_dir) {
+		var next = this.surfaces[in_dim].getNextSurface(in_dir);
+		for (var i = 0; i < this.surfaces.length; i++) {
+			if (this.surfaces[i] == next.su) {
+				if (typeof(this.leftRotate[in_dir + next.di]) == 'undefined') {
+					return {dim : i, lro : 0};
+				} else {
+					return {dim : i, lro : this.leftRotate[in_dir + next.di]};
+				}
+			}
+		}
+		return null;
+	},
+	debugElement : function(handlers) {
 		var div = document.createElement('DIV');
 		for (var i = 0; i < this.dim; i++) {
 			var table = document.createElement('TABLE');
@@ -263,6 +322,9 @@ var cube = {
 				for (var x = 0; x < this.size; x++) {
 					var td = document.createElement('TD');
 					td.className = 'c' + this.surfaces[i].piece[y][x];
+					for (var ev in handlers) {
+						td.addEventListener(ev, handlers[ev], false);
+					}
 					tr.appendChild(td);
 				}
 				table.appendChild(tr);
@@ -273,31 +335,318 @@ var cube = {
 	}
 };
 
-function dp()
+function cPosList(x, y, v1, v2)
 {
-	var elem = cube.debugElement();
-	with (document.getElementById('debug')) {
-		if (firstChild) {
-			replaceChild(elem, firstChild);
+	// assume LT --> TR --> RB --> BL
+	this.v = [v1, v2];
+	this.pos = [
+		{p : [x,               y]},
+		{p : [x + v1.x,        y + v1.y]},
+		{p : [x + v1.x + v2.x, y + v1.y + v2.y]},
+		{p : [x        + v2.x, y        + v2.y]}
+	];
+	for (var i = 0; i < this.pos.length; i++) {
+		var p1 = this.pos[i].p;
+		var p2 = this.pos[(i + 1) % this.pos.length].p;
+		if (p2[1] != p1[1]) {
+			this.pos[i].fy = (function() {
+				var a = (p2[0] - p1[0]) / (p2[1] - p1[1]);
+				var b = (p1[1] * p2[0] - p1[0] * p2[1]) / (p2[1] - p1[1]);
+				return function(in_y) {
+					return a * in_y - b;
+				};
+			})();
 		} else {
-			appendChild(elem);
+			this.pos[i].fy = null;
 		}
 	}
 }
 
-var X = true;
-var Y = false;
+cPosList.prototype.separateRect = function(in_dim)
+{
+	var v = [
+		{
+			x : this.v[0].x / in_dim,
+			y : this.v[0].y / in_dim
+		},
+		{
+			x : this.v[1].x / in_dim,
+			y : this.v[1].y / in_dim
+		}
+	];
+	var ret = [];
+	for (var y = 0; y < in_dim; y++) {
+		ret[y] = [];
+		for (var x = 0; x < in_dim; x++) {
+			ret[y][x] = new cPosList(
+				this.pos[0].p[0] + x * v[0].x + y * v[1].x,
+				this.pos[0].p[1] + x * v[0].y + y * v[1].y,
+				v[0],
+				v[1]
+			);
+		}
+	}
+	return ret;
+};
 
-// test
-cube.createCube(4);
+cPosList.prototype.drawPolygon = function(ctx, color, bordercolor)
+{
+	ctx.beginPath();
+	for (var i = 0; i < this.pos.length; i++) {
+		var p = this.pos[i].p;
+		if (i == 0) {
+			ctx.moveTo(p[0], p[1]);
+		} else {
+			ctx.lineTo(p[0], p[1]);
+		}
+	}
+	ctx.closePath();
+	ctx.strokeStyle = bordercolor;
+	ctx.stroke();
+	if (color) {
+		ctx.fillStyle = color;
+		ctx.fill();
+	}
+};
 
-cube.rotate(0, X, 0, 2);
-cube.rotate(0, X, 3, 2);
+cPosList.prototype.isIn = function(x, y)
+{
+	var cnt = 0;
+	for (var i = 0; i < this.pos.length; i++) {
+		var p1 = this.pos[i].p;
+		var p2 = this.pos[(i + 1) % this.pos.length].p;
+		if (p2[1] != p1[1]) {
+			var crossX = this.pos[i].fy(y);
+			if (crossX < x) {
+				continue;
+			}
+			if (p1[0] == p2[0]) {
+				if ((y - p1[1]) * (y - p2[1]) < 0) {
+					cnt++;
+				}
+			} else {
+				if ((crossX - p1[0]) * (crossX - p2[0]) < 0) {
+					cnt++;
+				}
+			}
+		}
+	}
+	return (cnt % 2 == 1);
+};
 
-cube.rotate(0, Y, 0, 2);
-cube.rotate(0, Y, 3, 2);
+function BIND(callback, self)
+{
+	return function() {
+		callback.apply(self, arguments);
+	}
+}
 
-dp();
+var gCanvas = {
+	dim : -1,
+	canvas : null,
+	m : 1,
+	sW : 30,
+	sH : 30,
+	rW : 99,
+	rH : 99,
+	view : null,
+	vtbl : {
+		LT : {main : null, L : null, T : null},
+		TR : {main : null, T : null, R : null},
+		RB : {main : null, R : null, B : null},
+		BL : {main : null, B : null, L : null}
+	},
+	colors : ['yellow', 'red', 'orange', 'blue', 'green', 'white'],
+	drawPiece : function(in_pi) {
+		/*
+			in_pi = {
+				T : [][],
+				R : [][]
+			} or
+			in_pi = {
+				R : [][],
+				B : [][]
+			} or
+			in_pi = {
+				B : [][],
+				L : [][]
+			} or
+			in_pi = {
+				L : [][],
+				T : [][]
+			}
+		*/
+		var ctx = this.canvas.getContext('2d');
+		for (var dir in this.vtbl[this.view]) {
+			for (var y = 0; y < this.dim; y++) {
+				for (var x = 0; x < this.dim; x++) {
+					this.vtbl[this.view][dir][y][x].drawPolygon(ctx, this.colors[in_pi[dir][y][x]], 'black');
+				}
+			}
+		}
+	},
+	getPos : function(in_target, in_x, in_y) {
+		for (var y = 0; y < this.dim; y++) {
+			for (var x = 0; x < this.dim; x++) {
+				if (this.vtbl[this.view][in_target][y][x].isIn(in_x, in_y)) {
+					return {x : x, y : y};
+				}
+			}
+		}
+		return null;
+	},
+	mouse : {},
+	onmouseup : function(e) {
+		for (var dir in this.mouse) {
+			if (!this.mouse[dir]) {
+				continue;
+			}
+			var p = this.getPos(dir, e.x, e.y);
+			if (!p) {
+				continue;
+			}
+			if ((this.mouse[dir].x == p.x) && (this.mouse[dir].y == p.y)) {
+				continue;
+			}
+			var lro = [
+				{
+					X  : true,
+					Y  : false,
+					px : p.x,
+					py : p.y,
+					dx : (p.x - this.mouse[dir].x > 0) ? 1 : -1,
+					dy : (p.y - this.mouse[dir].y > 0) ? 1 : -1
+				},
+				{
+					X  : false,
+					Y  : true,
+					px : p.x,
+					py : this.dim - 1 - p.y,
+					dx : (p.x - this.mouse[dir].x > 0) ? 1 : -1,
+					dy : (p.y - this.mouse[dir].y > 0) ? -1 : 1
+				},
+				{
+					/* dimmy */
+				},
+				{
+					X  : false,
+					Y  : true,
+					px : this.dim - 1 - p.x,
+					py : p.y,
+					dx : (p.x - this.mouse[dir].x > 0) ? -1 : 1,
+					dy : (p.y - this.mouse[dir].y > 0) ? 1 : -1
+				}
+			];
+			if (dir == 'main') {
+				if (this.mouse[dir].x == p.x) {
+					cube.rotate(0, lro[0].X, lro[0].px, lro[0].dy);
+				}
+				if (this.mouse[dir].y == p.y) {
+					cube.rotate(0, lro[0].Y, lro[0].py, lro[0].dx);
+				}
+			} else {
+				var ret = cube.dir2dim(0, dir);
+				if (!ret) {
+					continue;
+				}
+				if (this.mouse[dir].x == p.x) {
+					cube.rotate(ret.dim, lro[ret.lro].X, lro[ret.lro].px, lro[ret.lro].dy);
+				}
+				if (this.mouse[dir].y == p.y) {
+					cube.rotate(ret.dim, lro[ret.lro].Y, lro[ret.lro].py, lro[ret.lro].dx);
+				}
+			}
+			this.update();
+		}
+		this.mouse = {};
+	},
+	onmousedown : function(e) {
+		this.mouse = {};
+		for (var dir in this.vtbl[this.view]) {
+			this.mouse[dir] = this.getPos(dir, e.x, e.y);
+			if (this.mouse[dir]) {
+				return;
+			}
+		}
+	},
+	ondblclick : function(e) {
+		this.viewRotate();
+		this.update();
+	},
+	_update : function(in_pi) {
+		/*
+			in_pi = {
+				main : [][],
+				T : [][],
+				R : [][],
+				B : [][],
+				L : [][]
+			}
+		*/
+		var ctx = this.canvas.getContext('2d');
+		ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+		var pi = {};
+		for (var dir in this.vtbl[this.view]) {
+			pi[dir] = in_pi[dir];
+		}
+		this.drawPiece(pi);
+	},
+	update : function() {
+		this._update(cube.getPieceData4View(0, 'main'));
+	},
+	viewRotate : function() {
+		var ro = ['LT', 'TR', 'RB', 'BL'];
+		for (var i = 0; i < ro.length; i++) {
+			if (ro[i] == this.view) {
+				if (i + 1 == ro.length) {
+					this.view = ro[0];
+				} else {
+					this.view = ro[i + 1];
+				}
+				break;
+			}
+		}
+	},
+	init : function(in_dim) {
+		with (this) {
+			dim = in_dim;
+			view = 'LT';
+			var _main = (new cPosList(m + sW,		m + sH, 		{x : rW, y :   0},	{x :   0, y : rH})).separateRect(in_dim);
+			vtbl.LT.L = (new cPosList(m,			m,				{x : sW, y :  sH},	{x :   0, y : rH})).separateRect(in_dim);
+			vtbl.LT.T = (new cPosList(m,			m,				{x : rW, y :   0},	{x :  sW, y : sH})).separateRect(in_dim);
+			vtbl.TR.T = (new cPosList(m + sW + sW,	m,				{x : rW, y :   0},	{x : -sW, y : sH})).separateRect(in_dim);
+			vtbl.TR.R = (new cPosList(m + sW + rW,	m + sH, 		{x : sW, y : -sH},	{x :   0, y : rH})).separateRect(in_dim);
+			vtbl.RB.R = (new cPosList(m + sW + rW,	m + sH, 		{x : sW, y :  sH},	{x :   0, y : rH})).separateRect(in_dim);
+			vtbl.RB.B = (new cPosList(m + sW,		m + sH + rW,	{x : rW, y :   0},	{x :  sW, y : sH})).separateRect(in_dim);
+			vtbl.BL.B = (new cPosList(m + sW,		m + sH + rW,	{x : rW, y :   0},	{x : -sW, y : sH})).separateRect(in_dim);
+			vtbl.BL.L = (new cPosList(m,			m + sH + sH,	{x : sW, y : -sH},	{x :   0, y : rH})).separateRect(in_dim);
+			vtbl.LT.main = _main;
+			vtbl.TR.main = _main;
+			vtbl.RB.main = _main;
+			vtbl.BL.main = _main;
+			canvas = document.createElement('CANVAS');
+			canvas.width  = rW + rW * 2 + m * 2;
+			canvas.height = rH + rH * 2 + m * 2;
+		}
+		var ev = ['onmouseup', 'onmousedown', 'ondblclick'];
+		for (var i = 0; i < ev.length; i++) {
+			this.canvas[ev[i]] = BIND(this[ev[i]], this);
+		}
+		return this.canvas;
+	}
+};
+
+var DIM = 0;
+if (location.hash.match(/([2-9])/,'')) {
+	DIM = Number(RegExp.$1);
+} else {
+	DIM = 3;
+}
+if (DIM > 0) {
+	cube.createCube(DIM);
+	document.getElementById('debug').appendChild(gCanvas.init(DIM));
+	gCanvas.update();
+}
 
 </script>
 <style type='text/css'>
