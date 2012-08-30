@@ -312,26 +312,6 @@ var cube = {
 			}
 		}
 		return null;
-	},
-	debugElement : function(handlers) {
-		var div = document.createElement('DIV');
-		for (var i = 0; i < this.dim; i++) {
-			var table = document.createElement('TABLE');
-			for (var y = 0; y < this.size; y++) {
-				var tr = document.createElement('TR');
-				for (var x = 0; x < this.size; x++) {
-					var td = document.createElement('TD');
-					td.className = 'c' + this.surfaces[i].piece[y][x];
-					for (var ev in handlers) {
-						td.addEventListener(ev, handlers[ev], false);
-					}
-					tr.appendChild(td);
-				}
-				table.appendChild(tr);
-			}
-			div.appendChild(table);
-		}
-		return div;
 	}
 };
 
@@ -409,6 +389,15 @@ cPosList.prototype.drawPolygon = function(ctx, color, bordercolor)
 	}
 };
 
+cPosList.prototype.drawRichStyle = function(ctx, color)
+{
+	ctx.fillStyle = 'black';
+	ctx.fillRect(this.pos[0].p[0], this.pos[0].p[1], 1, 1);
+	ctx.fillRect(this.pos[1].p[0]-1, this.pos[1].p[1], 1, 1);
+	ctx.fillRect(this.pos[2].p[0]-1, this.pos[2].p[1]-1, 1, 1);
+	ctx.fillRect(this.pos[3].p[0], this.pos[3].p[1]-1, 1, 1);
+};
+
 cPosList.prototype.isIn = function(x, y)
 {
 	var cnt = 0;
@@ -441,14 +430,17 @@ function BIND(callback, self)
 	}
 }
 
+var RECT = Math.min(window.innerWidth, window.innerHeight);
+
 var gCanvas = {
 	dim : -1,
 	canvas : null,
 	m : 1,
-	sW : 30,
-	sH : 30,
-	rW : 99,
-	rH : 99,
+	r : 8,
+	sW : (RECT / 5),
+	sH : (RECT / 5),
+	rW : (RECT / 2),
+	rH : (RECT / 2),
 	view : null,
 	vtbl : {
 		LT : {main : null, L : null, T : null},
@@ -481,6 +473,7 @@ var gCanvas = {
 			for (var y = 0; y < this.dim; y++) {
 				for (var x = 0; x < this.dim; x++) {
 					this.vtbl[this.view][dir][y][x].drawPolygon(ctx, this.colors[in_pi[dir][y][x]], 'black');
+					this.vtbl[this.view][dir][y][x].drawRichStyle(ctx, this.colors[in_pi[dir][y][x]]);
 				}
 			}
 		}
@@ -501,12 +494,28 @@ var gCanvas = {
 			if (!this.mouse[dir]) {
 				continue;
 			}
-			var p = this.getPos(dir, e.x, e.y);
+			var p = this.getPos(dir, e.clientX, e.clientY);
 			if (!p) {
-				continue;
+				/* change this.view */
+				if (dir == 'main') {
+					var test = {
+						'TR' : {'T' : 'RB', 'R' : 'LT'},
+						'RB' : {'R' : 'BL', 'B' : 'TR'},
+						'BL' : {'B' : 'LT', 'L' : 'RB'},
+						'LT' : {'L' : 'TR', 'T' : 'BL'}
+					}[this.view];
+					for (var change in test) {
+						if (this.getPos(change, e.clientX, e.clientY)) {
+							this.view = test[change];
+							this.update();
+							break;
+						}
+					}
+				}
+				break;
 			}
 			if ((this.mouse[dir].x == p.x) && (this.mouse[dir].y == p.y)) {
-				continue;
+				break;
 			}
 			var lro = [
 				{
@@ -563,15 +572,11 @@ var gCanvas = {
 	onmousedown : function(e) {
 		this.mouse = {};
 		for (var dir in this.vtbl[this.view]) {
-			this.mouse[dir] = this.getPos(dir, e.x, e.y);
+			this.mouse[dir] = this.getPos(dir, e.clientX, e.clientY);
 			if (this.mouse[dir]) {
 				return;
 			}
 		}
-	},
-	ondblclick : function(e) {
-		this.viewRotate();
-		this.update();
 	},
 	_update : function(in_pi) {
 		/*
@@ -594,41 +599,31 @@ var gCanvas = {
 	update : function() {
 		this._update(cube.getPieceData4View(0, 'main'));
 	},
-	viewRotate : function() {
-		var ro = ['LT', 'TR', 'RB', 'BL'];
-		for (var i = 0; i < ro.length; i++) {
-			if (ro[i] == this.view) {
-				if (i + 1 == ro.length) {
-					this.view = ro[0];
-				} else {
-					this.view = ro[i + 1];
-				}
-				break;
-			}
-		}
-	},
 	init : function(in_dim) {
 		with (this) {
 			dim = in_dim;
 			view = 'LT';
-			var _main = (new cPosList(m + sW,		m + sH, 		{x : rW, y :   0},	{x :   0, y : rH})).separateRect(in_dim);
-			vtbl.LT.L = (new cPosList(m,			m,				{x : sW, y :  sH},	{x :   0, y : rH})).separateRect(in_dim);
-			vtbl.LT.T = (new cPosList(m,			m,				{x : rW, y :   0},	{x :  sW, y : sH})).separateRect(in_dim);
-			vtbl.TR.T = (new cPosList(m + sW + sW,	m,				{x : rW, y :   0},	{x : -sW, y : sH})).separateRect(in_dim);
-			vtbl.TR.R = (new cPosList(m + sW + rW,	m + sH, 		{x : sW, y : -sH},	{x :   0, y : rH})).separateRect(in_dim);
-			vtbl.RB.R = (new cPosList(m + sW + rW,	m + sH, 		{x : sW, y :  sH},	{x :   0, y : rH})).separateRect(in_dim);
-			vtbl.RB.B = (new cPosList(m + sW,		m + sH + rW,	{x : rW, y :   0},	{x :  sW, y : sH})).separateRect(in_dim);
-			vtbl.BL.B = (new cPosList(m + sW,		m + sH + rW,	{x : rW, y :   0},	{x : -sW, y : sH})).separateRect(in_dim);
-			vtbl.BL.L = (new cPosList(m,			m + sH + sH,	{x : sW, y : -sH},	{x :   0, y : rH})).separateRect(in_dim);
-			vtbl.LT.main = _main;
-			vtbl.TR.main = _main;
-			vtbl.RB.main = _main;
-			vtbl.BL.main = _main;
+			/* left & top */
+			vtbl.LT.main = (new cPosList(m+sW+r,	m+sH+r, {x : rW, y :  -r},	{x :  -r, y : rH})).separateRect(in_dim);
+			vtbl.LT.L    = (new cPosList(m+r,		m+r,	{x : sW, y :  sH},	{x :  -r, y : rH})).separateRect(in_dim);
+			vtbl.LT.T    = (new cPosList(m+r,		m+r,	{x : rW, y :  -r},	{x :  sW, y : sH})).separateRect(in_dim);
+			/* right & bottom */
+			vtbl.RB.main = (new cPosList(m+r,		m+r, 	{x : rW, y :  -r},	{x :  -r, y : rH})).separateRect(in_dim);
+			vtbl.RB.R    = (new cPosList(m+rW+r,	m, 		{x : sW, y :  sH},	{x :  -r, y : rH})).separateRect(in_dim);
+			vtbl.RB.B    = (new cPosList(m,			m+rW+r,	{x : rW, y :  -r},	{x :  sW, y : sH})).separateRect(in_dim);
+			/* top & right */
+			vtbl.TR.main = (new cPosList(m,			m+sH, 	{x : rW, y :   r},	{x :   r, y : rH})).separateRect(in_dim);
+			vtbl.TR.T    = (new cPosList(m+sW,		m,		{x : rW, y :   r},	{x : -sW, y : sH})).separateRect(in_dim);
+			vtbl.TR.R    = (new cPosList(m+rW,		m+sH+r, {x : sW, y : -sH},	{x :   r, y : rH})).separateRect(in_dim);
+			/* bottom & left */
+			vtbl.BL.main = (new cPosList(m+sW,		m, 		{x : rW, y :   r},	{x :   r, y : rH})).separateRect(in_dim);
+			vtbl.BL.B    = (new cPosList(m+sW+r,	m+rW,	{x : rW, y :   r},	{x : -sW, y : sH})).separateRect(in_dim);
+			vtbl.BL.L    = (new cPosList(m,			m+sH,	{x : sW, y : -sH},	{x :   r, y : rH})).separateRect(in_dim);
 			canvas = document.createElement('CANVAS');
-			canvas.width  = rW + rW * 2 + m * 2;
-			canvas.height = rH + rH * 2 + m * 2;
+			canvas.width  = rW + sW + (m + r) * 2;
+			canvas.height = rH + sH + (m + r) * 2;
 		}
-		var ev = ['onmouseup', 'onmousedown', 'ondblclick'];
+		var ev = ['onmouseup', 'onmousedown'];
 		for (var i = 0; i < ev.length; i++) {
 			this.canvas[ev[i]] = BIND(this[ev[i]], this);
 		}
@@ -650,7 +645,8 @@ if (DIM > 0) {
 
 </script>
 <style type='text/css'>
-#debug TABLE {border-collapse: collapse; margin-bottom: 2px;}
+BODY {background-color: black}
+#debug {overflow: hidden; background-color: black}
 #debug TD {border: solid 1px black; width: 16px; height: 16px; padding: 0px; margin: 0px;}
 #debug .c0 {background-color: yellow;}
 #debug .c1 {background-color: red;}
