@@ -4,12 +4,28 @@
 	HTTP Function
 */
 
+define('CRLF', "\r\n");
+define('CRLFLEN', strlen(CRLF));
+
 function util_array2query($in_array)
 {
 	$params = array();
 	foreach ($in_array as $key => $val)
 		array_push($params, "{$key}=" . urlencode($val));
 	return implode('&', $params);
+}
+
+function util_array2multipartFormData($in_array, $in_boundary)
+{
+	$lines = array();
+	foreach ($in_array as $key => $val) {
+		array_push($lines, "--{$in_boundary}");
+		array_push($lines, "Content-Disposition: form-data; name=\"{$key}\"");
+		array_push($lines, "");
+		array_push($lines, $val);
+	}
+	array_push($lines, "--{$in_boundary}--");
+	return implode(CRLF, $lines);
 }
 
 function util_parse_url($in_url)
@@ -47,9 +63,6 @@ define('CHTTP_READYSTATE_COMPLETED', '4');
 define('CHTTP_RCEVRESPONSE_WOULDBLOCK', 1);
 define('CHTTP_RCEVRESPONSE_IOSLEEP', 2);
 define('CHTTP_RCEVRESPONSE_DONE', 3);
-
-define('CRLF', "\r\n");
-define('CRLFLEN', strlen(CRLF));
 
 class CHttp
 {
@@ -172,7 +185,7 @@ class CHttp
 		}
 		if ($this->cacheRead()) {
 			// cache
-			return;
+			return TRUE;
 		} else {
 			// network
 			return fputs($this->_handle, $in_data);
@@ -242,7 +255,7 @@ class CHttp
 				$host = "tcp://{$this->_proxy['host']}";
 				$port = $this->_proxy['port'];
 			}
-			$this->_rawRequest = "{$this->_method} {$this->_parsedUrl['scheme']}://{$this->_parsedUrl['host']}{$request_line} HTTP/1.1\r\n";
+			$this->_rawRequest = "{$this->_method} {$this->_parsedUrl['scheme']}://{$this->_parsedUrl['host']}{$request_line} HTTP/1.1" . CRLF;
 		} else {
 			if ($this->_parsedUrl['scheme'] == 'https') {
 				$host = "ssl://{$this->_parsedUrl['host']}";
@@ -251,22 +264,25 @@ class CHttp
 				$host = "tcp://{$this->_parsedUrl['host']}";
 				$port = 80;
 			}
-			$this->_rawRequest = "{$this->_method} {$request_line} HTTP/1.1\r\n";
+			$this->_rawRequest = "{$this->_method} {$request_line} HTTP/1.1" . CRLF;
 		}
 		$host = str_replace('://localhost', '://127.0.0.1', $host);
 		if (!$this->_streamOpen($host, $port)) {
 			return FALSE;
 		}
 		foreach ($this->_headers as $key => $val) {
-			$this->_rawRequest .= "{$key}: {$val}\r\n";
+			$this->_rawRequest .= "{$key}: {$val}" . CRLF;
 		}
-		$this->_rawRequest .= "\r\n";
+		$this->_rawRequest .= CRLF;
 		if ($in_body) {
 			$this->_rawRequest .= $in_body;
 		}
-		$this->_streamPuts($this->_rawRequest);
-		$this->_readyState = CHTTP_READYSTATE_LOADING_H;
-		return TRUE;
+		if ($this->_streamPuts($this->_rawRequest)) {
+			$this->_readyState = CHTTP_READYSTATE_LOADING_H;
+			return TRUE;
+		} else {
+			return FALSE;
+		}
 	}
 
 	function _rcevResponse($in_header_only = FALSE) {
@@ -357,14 +373,20 @@ class CHttp
 		return FALSE;
 	}
 
-	function POST($in_postdata, $in_header_only = FALSE, $in_timeout = CHTTP_SOCKET_BLOCKING_TIMEOUT) {
+	function POST($in_postdata, $in_is_urlenc = TRUE, $in_header_only, $in_timeout) {
 		/*
 			TRUE  : done
 			FALSE : timeout
 		*/
 		if (is_array($in_postdata)) {
-			$this->setHeader('Content-Type', 'application/x-www-form-urlencoded');
-			$body = util_array2query($in_postdata);
+			if ($in_is_urlenc) {
+				$this->setHeader('Content-Type', 'application/x-www-form-urlencoded');
+				$body = util_array2query($in_postdata);
+			} else {
+				$boundary = 'chttp' . rand();
+				$this->setHeader('Content-Type', 'multipart/form-data; boundary=' . $boundary);
+				$body = util_array2multipartFormData($in_postdata, $boundary);
+			}
 		} else {
 			$body = $in_postdata;
 		}
@@ -372,6 +394,14 @@ class CHttp
 			return $this->_rcevResponseBlocking($in_header_only, $in_timeout);
 		}
 		return FALSE;
+	}
+
+	function POST_URLENC($in_postdata, $in_header_only = FALSE, $in_timeout = CHTTP_SOCKET_BLOCKING_TIMEOUT) {
+		$this->POST($in_postdata, TRUE, $in_header_only, $in_timeout);
+	}
+
+	function POST_MULTIPART($in_postdata, $in_header_only = FALSE, $in_timeout = CHTTP_SOCKET_BLOCKING_TIMEOUT) {
+		$this->POST($in_postdata, FALSE, $in_header_only, $in_timeout);
 	}
 
 	function setAuthHeader($in_user, $in_pass) {
@@ -1166,22 +1196,34 @@ $symbol = <<<EOSYMBOL
 (HTTP-2) simple POST method
 EOSYMBOL;
 		$prof->rec($symbol);
-		$url = ut_servermode_url(UT_SERVERMODE_POST);
-		$http = new CHttp($url);
 		$post_params = array(
 			'p1' => 'abc',
 			'p2' => '===',
 			'p3' => '%%%'
 		);
-		$http->POST($post_params);
+		$url = ut_servermode_url(UT_SERVERMODE_POST);
+		$http = new CHttp($url);
+		$http->POST_URLENC($post_params);
 		$r = $http->getResponseHeaders();
 		foreach ($post_params as $key => $val) {
 			if (array_key_exists("X-{$key}", $r)) {
 				if ($r["X-{$key}"] != $val) {
-					$http->_DP("test (HTTP-2) failed. [value : {$val}]");
+					$http->_DP("test (HTTP-2-1) failed. [value : {$val}]");
 				}
 			} else {
-				$http->_DP("test (HTTP-2) failed. [key : {$key}]");
+				$http->_DP("test (HTTP-2-1) failed. [key : {$key}]");
+			}
+		}
+		$http = new CHttp($url);
+		$http->POST_MULTIPART($post_params);
+		$r = $http->getResponseHeaders();
+		foreach ($post_params as $key => $val) {
+			if (array_key_exists("X-{$key}", $r)) {
+				if ($r["X-{$key}"] != $val) {
+					$http->_DP("test (HTTP-2-2) failed. [value : {$val}]");
+				}
+			} else {
+				$http->_DP("test (HTTP-2-2) failed. [key : {$key}]");
 			}
 		}
 $symbol = <<<EOSYMBOL
@@ -1320,9 +1362,10 @@ $symbol = <<<EOSYMBOL
 (HTTP-10) safe API
 EOSYMBOL;
 		$prof->rec($symbol);
+		$url = ut_servermode_url(UT_SERVERMODE_RAND_RES);
 		$http = new CHttp($url);
 		$s = $http->getStatusLine();
-		if (!is_array($s)) {
+		if (is_array($s)) {
 			$http->_DP('test (HTTP-10-1) failed.');
 		}
 		$r = $http->getResponseHeader('hoge');
