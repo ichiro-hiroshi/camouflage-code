@@ -1,0 +1,61 @@
+<script>
+
+function setPngCookie(name, value, callback)
+{
+	var img = new Image();
+	with (img.style) {
+		visibility = 'hidden';
+		position = 'absolute';
+	}
+	img.src = 'png.php?' + name + '=' + value;
+	img.onload = callback;
+}
+
+function getPngCookie(name, callback)
+{
+	var img = new Image();
+	with (img.style) {
+		visibility = 'hidden';
+		position = 'absolute';
+	}
+	img.src = 'png.php?' + name + '=';
+	img.onload = (function(in_img, in_callback) {
+		return function() {
+			var canvas = document.createElement('canvas');
+			with (canvas) {
+				style.visibility = 'hidden';
+				style.position = 'absolute';
+				width = 200;
+				height = 1;
+			}
+			var ctx = canvas.getContext('2d');
+			ctx.drawImage(in_img, 0, 0);
+			var imgd = ctx.getImageData(0, 0, 200, 1);
+			var pix = imgd.data;
+			var value = '';
+			for (var i = 0, n = pix.length; i < n; i += 4) {
+				if (pix[i] == 0) {
+					break;
+				}
+				value += String.fromCharCode(pix[i]);
+				if (pix[i + 1] == 0) {
+					break;
+				}
+				value += String.fromCharCode(pix[i + 1]);
+				if (pix[i + 2] == 0) {
+					break;
+				}
+				value += String.fromCharCode(pix[i + 2]);
+			}
+			in_callback(value);
+		};
+	})(img, callback);
+}
+
+setPngCookie('test2', 'hoge', function() {
+	getPngCookie('test2', function(in_value) {
+		alert(in_value);
+	});
+});
+
+</script>
