@@ -13,10 +13,11 @@
 */
 
 define('SELF', "http://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}");
+define('JSNAMESPACE', 'getCookie');
 
 function fingerPrint($in_prefix = '')
 {
-	$elems = array('REMOTE_ADDR', 'HTTP_USER_AGENT', 'HTTP_ACCEPT_LANGUAGE',);
+	$elems = array('REMOTE_ADDR', 'HTTP_USER_AGENT', 'HTTP_ACCEPT_LANGUAGE');
 	foreach ($elems as $elem) {
 		$in_prefix .= $_SERVER[$elem];
 	}
@@ -26,6 +27,7 @@ function fingerPrint($in_prefix = '')
 function js1($in_cookie)
 {
 	$SELF = SELF;
+	$JSNAMESPACE = JSNAMESPACE;
 	print <<<EOJS
 (function() {
 	var target = document.getElementsByTagName('SCRIPT').item(0);
@@ -36,7 +38,7 @@ function js1($in_cookie)
 		return ret;
 	};
 	window.setTimeout(function() {
-		if (window.getCookie) {
+		if (window.{$JSNAMESPACE}) {
 			return;
 		}
 		target.parentNode.insertBefore(makeScript('{$SELF}?cookie={$in_cookie}'), target);
@@ -48,13 +50,14 @@ EOJS;
 
 function js2($in_cookie)
 {
+	$JSNAMESPACE = JSNAMESPACE;
 	print <<<EOJS
 (function() {
-	if (!window.getCookie) {
-		window.getCookie = {};
+	if (!window.{$JSNAMESPACE}) {
+		window.{$JSNAMESPACE} = {};
 	}
-	window.getCookie.cookie = '{$in_cookie}';
-	alert(window.getCookie.cookie);
+	window.{$JSNAMESPACE}.cookie = '{$in_cookie}';
+	alert(window.{$JSNAMESPACE}.cookie);
 })();
 EOJS;
 }
