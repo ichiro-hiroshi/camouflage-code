@@ -1,0 +1,104 @@
+<div id='target'></div>
+<script>
+
+function BIND(callback, self)
+{
+	return function() {
+		callback.apply(self, arguments);
+	}
+}
+
+var gyoGan = {
+	img : null,
+	canvas : null,
+	ratio : [1, 2, 3],
+	/*
+		e.g.
+		11 12 14 12 11
+		21 22 24 22 21
+		41 42 44 42 41
+		21 22 24 22 21
+		11 12 14 12 11
+	*/
+	createCanvs : function(in_w, in_h, in_img) {
+		this.canvas = document.createElement('CANVAS');
+		this.canvas.width = in_w;
+		this.canvas.height = in_h;
+		this.img = in_img;
+		if (this.img.complete) {
+			this.reDraw();
+		} else {
+			this.img.onload = BIND(this.reDraw, this);
+		}
+		return this.canvas;
+	},
+	setupGyoGan : function(in_ratio) {
+		this.ratio = in_ratio;
+		this.reDraw();
+	},
+	mkTbl1 : function(in_ratio, in_w, in_h, in_offset_x, in_offset_y) {
+		var tbl = [];
+		var ratio = []
+		for (var i = 0; i < in_ratio.length; i++) {
+			ratio[i] = in_ratio[i];
+			ratio[(in_ratio.length - 1) * 2 - i] = in_ratio[i];
+		}
+		var denom = 0
+		for (var i = 0; i < ratio.length; i++) {
+			denom += ratio[i];
+		}
+		var dw = in_w / denom;
+		var dh = in_h / denom;
+		var p = {
+			x : 0,
+			y : 0
+		};
+		for (var y = 0; y < ratio.length; y++) {
+			tbl[y] = [];
+			for (var x = 0; x < ratio.length; x++) {
+				tbl[y][x] = {
+					l : p.x + in_offset_x,
+					t : p.y + in_offset_y,
+					w : ratio[x] * dw,
+					h : ratio[y] * dh
+				};
+				p.x = p.x + ratio[x] * dw;
+			}
+			p.x = 0;
+			p.y = p.y + ratio[y] * dh;
+		}
+		return tbl;
+	},
+	mkTbl2 : function(in_ratio, in_w, in_h) {
+		return this.mkTbl1(in_ratio, in_w, in_h, 0, 0);
+	},
+	reDraw : function() {
+		var ratio_src = [];
+		for (var i = 0; i < this.ratio.length; i++) {
+			ratio_src[i] = 1;
+		}
+		var tbl = {
+			src : this.mkTbl2(ratio_src, this.img.width, this.img.height),
+			dst : this.mkTbl2(this.ratio, this.canvas.width, this.canvas.height)
+		};
+		var ctx = this.canvas.getContext('2d');
+		for (var y = 0; y < tbl.src.length; y++) {
+			for (var x = 0; x < tbl.src[y].length; x++) {
+				var s = tbl.src[y][x];
+				var d = tbl.dst[y][x];
+				ctx.drawImage(this.img,
+					s.l, s.t, s.w, s.h,
+					d.l, d.t, d.w, d.h);
+			}
+		}
+	},
+	move : function(in_x, in_y) {
+	}
+};
+
+var img = document.createElement('IMG');
+//img.src = '45aki.jpg';
+img.src = 'yahoo.png';
+document.getElementById('target').appendChild(gyoGan.createCanvs(450, 250, img));
+
+</script>
