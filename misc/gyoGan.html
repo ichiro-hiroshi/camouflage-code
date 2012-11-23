@@ -1,3 +1,6 @@
+<button onclick='zoomIn()'>zoom in</button>
+<button onclick='zoomOut()'>zoom out</button>
+<hr />
 <div id='target'></div>
 <script>
 
@@ -20,21 +23,58 @@ var gyoGan = {
 		21 22 24 22 21
 		11 12 14 12 11
 	*/
-	createCanvs : function(in_w, in_h, in_img) {
+	fitSize : function() {
+		var src = 0;
+		var dst = 0;
+		var max = this.ratio[this.ratio.length - 1];
+		for (var i = 0; i < this.ratio.length; i++) {
+			src += max * 2;
+			dst += this.ratio[i] * 2;
+		}
+		src -= max;
+		dst -= max;
+		return {
+			dst : dst,
+			src : src
+		};
+	},
+	autoReSize : function() {
+		var s = this.fitSize();
+		var r = s.dst / s.src;
+		this.canvas.width = this.img.width * r;
+		this.canvas.height = this.img.height * r;
+		this.reDraw();
+	},
+	createCanvs : function(in_auto, in_w, in_h, in_img) {
 		this.canvas = document.createElement('CANVAS');
-		this.canvas.width = in_w;
-		this.canvas.height = in_h;
+		if (in_auto) {
+			var callback = 'autoReSize';
+			this.canvas.width = 0;
+			this.canvas.height = 0;
+		} else {
+			var callback = 'reDraw';
+			this.canvas.width = in_w;
+			this.canvas.height = in_h;
+		}
 		this.img = in_img;
 		if (this.img.complete) {
-			this.reDraw();
+			this[callback]();
 		} else {
-			this.img.onload = BIND(this.reDraw, this);
+			this.img.onload = BIND(this[callback], this);
 		}
 		return this.canvas;
 	},
-	setupGyoGan : function(in_ratio) {
+	createCanvs1 : function(in_w, in_h, in_img) {
+		return this.createCanvs(false, in_w, in_h, in_img);
+	},
+	createCanvs2 : function(in_img) {
+		return this.createCanvs(true, null, null, in_img);
+	},
+	setupGyoGan : function(in_ratio, in_redraw) {
 		this.ratio = in_ratio;
-		this.reDraw();
+		if (in_redraw) {
+			this.autoReSize();
+		}
 	},
 	mkTbl1 : function(in_ratio, in_w, in_h, in_offset_x, in_offset_y) {
 		var tbl = [];
@@ -97,8 +137,42 @@ var gyoGan = {
 };
 
 var img = document.createElement('IMG');
-//img.src = '45aki.jpg';
-img.src = 'yahoo.png';
-document.getElementById('target').appendChild(gyoGan.createCanvs(450, 250, img));
+img.src = '45aki.jpg';
+
+gMag = {
+	ix : 0,
+	settings : [
+		[1,1,1],
+		[5,6,7],
+		[4,5,6],
+		[3,4,5],
+		[2,3,4],
+		[1,2,3]
+	],
+	get : function(in_zoom) {
+		this.ix += in_zoom;
+		if (this.ix > this.settings.length - 1) {
+			this.ix = this.settings.length - 1;
+		}
+		if (this.ix < 0) {
+			this.ix = 0;
+		}
+		return this.settings[this.ix];
+	}
+};
+
+gyoGan.setupGyoGan(gMag.get(0), false);
+document.getElementById('target').appendChild(gyoGan.createCanvs2(img));
+
+function zoomIn()
+{
+	gyoGan.setupGyoGan(gMag.get(1), true);
+}
+
+function zoomOut()
+{
+	gyoGan.setupGyoGan(gMag.get(-1), true);
+}
 
 </script>
+
