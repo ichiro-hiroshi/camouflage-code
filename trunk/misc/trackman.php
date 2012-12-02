@@ -2,11 +2,24 @@
 
 /*
 
-[how to use]
+[tracking]
 
 <html>
 <body>
-<script type='text/javascript' src='http://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}'></script>
+<script type='text/javascript' src='http://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}'>
+</script>
+</body>
+</html>
+
+[user]
+
+<html>
+<body>
+<script type='text/javascript' src='http://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}?user'>
+</script>
+<script type='text/javascript'>
+// use prepared data
+</script>
 </body>
 </html>
 
@@ -29,9 +42,9 @@ function h($in_seed, $in_len = 4)
 define('SELF', "http://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}");
 define('PCOOKIE', h('pcookie'));
 define('MODE', h('mode'));
-define('JSNAMESPACE', scriptName($_SERVER['SCRIPT_NAME']));
-define('CACHE_MODE', h('mc'));
-define('TRACK_MODE', h('mt'));
+define('JSNAMESPACE', h(scriptName($_SERVER['SCRIPT_NAME'])));
+define('CACHE_MODE', h('cache'));
+define('TRACK_MODE', h('track'));
 
 function _fingerPrint($in_fields, $in_prefix)
 {
@@ -244,11 +257,13 @@ function proc1stReq()
 	header('Content-Type: text/javascript');
 	if (array_key_exists(PCOOKIE, $_COOKIE)) {
 		$fp = fingerPrintLong();
+		header("X-fingerPrint: {$fp}");
 		$pc = $_COOKIE[PCOOKIE];
 		$ret = readDB($fp, $pc);
 		if ($ret['cd'] === RW_NOT) {
 			write1stScript();
 		} else {
+			header('Cache-Control: no-store');
 			$cnt = $ret['data'] + 1;
 			writeDB($cnt, $fp, $pc);
 			print "// counter : {$cnt}";
@@ -342,15 +357,11 @@ function procCacheReq()
 			if (is_file($server_cache)) {
 				$pc = file_get_contents($server_cache);
 				unlink($server_cache);
-				$cnt = 0;
 				$fp = fingerPrintLong();
+				header("X-fingerPrint: {$fp}");
 				$ret = readDB($fp, $pc);
 				if ($ret['cd'] === RW_NOT) {
-					$ret = readDB($fp);
-					if ($ret['cd'] === RW_MAY) {
-						$pc = $ret['may'];
-						$cnt = $ret['data'] + 1;
-					}
+					$cnt = 0;
 				} else {
 					$cnt = $ret['data'] + 1;
 				}
@@ -366,6 +377,7 @@ function procCacheReq()
 		}
 	} else {
 		header('Content-Type: text/javascript');
+		header('Cache-Control: no-store');
 		print '// key-error';
 	}
 }
@@ -390,8 +402,10 @@ EOJS;
 function procTrackReq()
 {
 	header('Content-Type: text/javascript');
+	header('Cache-Control: no-store');
 	if (array_key_exists(PCOOKIE, $_GET)) {
 		$fp = fingerPrintLong();
+		header("X-fingerPrint: {$fp}");
 		$pc = $_GET[PCOOKIE];
 		$ret = readDB($fp, $pc);
 		if ($ret['cd'] === RW_NOT) {
@@ -405,6 +419,11 @@ function procTrackReq()
 	} else {
 		print '// key-error';
 	}
+}
+
+function procUserReq()
+{
+	/* use write1stScript */
 }
 
 if (array_key_exists(MODE, $_GET)) {
@@ -421,7 +440,11 @@ if (array_key_exists(MODE, $_GET)) {
 		break;
 	}
 } else {
-	proc1stReq();
+	if (array_key_exists('user', $_GET)) {
+		procUserReq();
+	} else {
+		proc1stReq();
+	}
 }
 
 exit;
