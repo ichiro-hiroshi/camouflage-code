@@ -1,0 +1,197 @@
+<div id='target'></div>
+<script>
+
+function BIND(callback, self)
+{
+	return function() {
+		callback.apply(self, arguments);
+	}
+}
+
+function gyoGan(in_ratio, in_wl, in_wr)
+{
+	this.img = null;
+	this.canvas = null;
+	this.ratio = in_ratio;
+	this.weight = {
+		l : in_wl,
+		r : in_wr
+	};
+}
+
+gyoGan.prototype = {
+	/*
+		e.g.
+		11 12 14 12 11
+		21 22 24 22 21
+		41 42 44 42 41
+		21 22 24 22 21
+		11 12 14 12 11
+	*/
+	fitSize : function() {
+		var srcx = 0;
+		var srcy = 0;
+		var dstx = 0;
+		var dsty = 0;
+		var max = this.ratio[this.ratio.length - 1];
+		for (var i = 0; i < this.ratio.length; i++) {
+			srcx += max * 2;
+			srcy += max * 2;
+			dstx += this.ratio[i] * 2 + (this.weight.l + this.weight.r);
+			dsty += this.ratio[i] * 2;
+		}
+		srcx = srcx - max;
+		srcy = srcy - max;
+		dstx = dstx - max - (this.weight.l + this.weight.r);
+		dsty = dsty - max;
+		return {
+			dstx : dstx,
+			dsty : dsty,
+			srcx : srcx,
+			srcy : srcy
+		};
+	},
+	autoReSize : function() {
+		var s = this.fitSize();
+		this.canvas.width = this.img.width * s.dstx / s.srcx;
+		this.canvas.height = this.img.height * s.dsty / s.srcy;
+		this.reDraw();
+	},
+	getDelta : function() {
+		var s = this.fitSize();
+		return {
+			l : this.img.width * (1 - (s.dstx / s.srcx)) / 2,
+			t : this.img.height * (1 - (s.dsty / s.srcy)) / 2
+		};
+	},
+	createCanvs : function(in_auto, in_w, in_h, in_img) {
+		this.canvas = document.createElement('CANVAS');
+		if (in_auto) {
+			var callback = 'autoReSize';
+			this.canvas.width = 0;
+			this.canvas.height = 0;
+		} else {
+			var callback = 'reDraw';
+			this.canvas.width = in_w;
+			this.canvas.height = in_h;
+		}
+		this.img = in_img;
+		if (this.img.complete) {
+			this[callback]();
+		} else {
+			this.img.onload = BIND(this[callback], this);
+		}
+		return this.canvas;
+	},
+	createCanvs1 : function(in_w, in_h, in_img) {
+		return this.createCanvs(false, in_w, in_h, in_img);
+	},
+	createCanvs2 : function(in_img) {
+		return this.createCanvs(true, null, null, in_img);
+	},
+	setupGyoGan : function(in_ratio, in_wl, in_wr, in_redraw) {
+		this.ratio = in_ratio;
+		this.weight = {
+			l : in_wl,
+			r : in_wr
+		};
+		if (in_redraw) {
+			this.autoReSize();
+		}
+	},
+	mkTbl1 : function(in_ratio, in_w, in_h, in_offset_x, in_offset_y) {
+		var tbl = [];
+		ratiox = [];
+		ratioy = [];
+		for (var i = 0; i < in_ratio.length; i++) {
+			ratiox[i] = in_ratio[i];
+			ratioy[i] = in_ratio[i];
+			ratiox[(in_ratio.length - 1) * 2 - i] = in_ratio[i];
+			ratioy[(in_ratio.length - 1) * 2 - i] = in_ratio[i];
+			if (i < in_ratio.length - 1) {
+				ratiox[i] += this.weight.l;
+				ratiox[(in_ratio.length - 1) * 2 - i] += this.weight.r;
+			}
+		}
+		var denom = {
+			x : 0,
+			y : 0
+		};
+		for (var i = 0; i < ratiox.length; i++) {
+			denom.x += ratiox[i];
+			denom.y += ratioy[i];
+		}
+		var dw = in_w / denom.x;
+		var dh = in_h / denom.y;
+		var p = {
+			x : 0,
+			y : 0
+		};
+		for (var y = 0; y < ratioy.length; y++) {
+			tbl[y] = [];
+			for (var x = 0; x < ratiox.length; x++) {
+				tbl[y][x] = {
+					l : p.x + in_offset_x,
+					t : p.y + in_offset_y,
+					w : ratiox[x] * dw,
+					h : ratioy[y] * dh
+				};
+				p.x = p.x + ratiox[x] * dw;
+			}
+			p.x = 0;
+			p.y = p.y + ratioy[y] * dh;
+		}
+		return tbl;
+	},
+	mkTbl2 : function(in_ratio, in_w, in_h) {
+		return this.mkTbl1(in_ratio, in_w, in_h, 0, 0);
+	},
+	reDraw : function() {
+		var ratio_src = [];
+		for (var i = 0; i < this.ratio.length; i++) {
+			ratio_src[i] = 1;
+		}
+		var tbl = {
+			src : this.mkTbl2(ratio_src, this.img.width, this.img.height),
+			dst : this.mkTbl2(this.ratio, this.canvas.width, this.canvas.height)
+		};
+		var ctx = this.canvas.getContext('2d');
+		for (var y = 0; y < tbl.src.length; y++) {
+			for (var x = 0; x < tbl.src[y].length; x++) {
+				var s = tbl.src[y][x];
+				var d = tbl.dst[y][x];
+				ctx.drawImage(this.img,
+					s.l, s.t, s.w, s.h,
+					d.l, d.t, d.w, d.h);
+			}
+		}
+	},
+};
+
+({
+	view : {
+		l : null,
+		r : null
+	},
+	createImg : function() {
+		var img = document.createElement('IMG');
+		img.src = 'img/45aki.jpg';
+		//img.src = 'img/45dora.jpg';
+		//img.src = 'img/45nenga.jpg';
+		//img.src = 'img/45box.png';
+		//img.src = 'img/45benchi.gif';
+		return img;
+	},
+	init : function() {
+		var ratio = [11,12,13,14,15,16,17];
+		this.view.l = new gyoGan(ratio, 0, 0.1);
+		this.view.r = new gyoGan(ratio, 0.1, 0);
+		var t = document.getElementById('target');
+		t.appendChild(this.view.l.createCanvs2(this.createImg()));
+		t.appendChild(this.view.r.createCanvs2(this.createImg()));
+		this.view.l.reDraw();
+		this.view.r.reDraw();
+	}
+}).init();
+
+</script>
