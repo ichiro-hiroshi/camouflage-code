@@ -1,0 +1,57 @@
+<style type='text/css'>
+TABLE {border-collapse: collapse;}
+TABLE, TD {border: solid 1px black;}
+TD {width: 100px; background-color: silver;}
+#preventDefault {width: 500px; height: 1000px; border: solid 1px black; padding: 5px; background-color: yellow;}
+</style>
+<div id='preventDefault'>
+<script>
+
+function getPos(in_id, e)
+{
+	var pos = {};
+	switch (e.type) {
+	case 'touchstart' :
+	case 'touchmove' :
+		pos.x = e.touches[0].clientX;
+		pos.y = e.touches[0].clientY;
+		break;
+	case 'touchend' :
+	case 'touchcancel' :
+		pos.x = e.changedTouches[0].clientX;
+		pos.y = e.changedTouches[0].clientY;
+		break;
+	case 'mousedown' :
+	case 'mouseup' :
+	case 'mousemove' :
+	default :
+		pos.x = e.clientX;
+		pos.y = e.clientY;
+		break;
+	}
+	return pos;
+}
+
+var ev = ['mousedown', 'mouseup', 'mousemove', 'touchstart', 'touchmove', 'touchend', 'touchcancel'];
+
+document.write('<table>');
+for (var i = 0; i < ev.length; i++) {
+	document.write('<tr><td>' + ev[i] + '</td><td id="' + ev[i] + '"></td></tr>');
+	window.addEventListener(ev[i], (function(in_id) {
+		return function(e) {
+			var p = getPos(in_id, e);
+			document.getElementById(in_id).innerHTML = '(' + p.x + ', ' + p.y + ')';
+			if (p.x < 500) {
+				e.preventDefault();
+			}
+		};
+	})(ev[i]), false);
+}
+document.write('</table>');
+
+window.setInterval(function() {
+	document.getElementById('preventDefault').appendChild(document.createTextNode('*'));
+}, 1000);
+
+</script>
+<div>
