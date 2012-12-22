@@ -33,13 +33,20 @@ function getFiles($in_path)
 	return $ret;
 }
 
-function makeLinks($in_tree)
+function makeLinks($in_tree, $in_open)
 {
+	if ($in_open) {
+		$display = 'block';
+		$button = '-';
+	} else {
+		$display = 'none';
+		$button = '+';
+	}
 	foreach ($in_tree as $key => $val) {
 		if ($val['c']) {
-			print "<li><button onclick='action(this)'>+</button> <span>{$key}</span>\n";
-			print "<ul style='display:none;'>\n";
-			makeLinks($val['c']);
+			print "<li><button onclick='action(this)'>{$button}</button> <span>{$key}</span>\n";
+			print "<ul style='display:{$display};'>\n";
+			makeLinks($val['c'], $in_open);
 			print "</ul>\n";
 			print "</li>\n";
 		} else {
@@ -48,9 +55,7 @@ function makeLinks($in_tree)
 	}
 }
 
-$ret = getFiles('.');
-ksort($ret);
-makeLinks($ret);
+makeLinks(getFiles('.'), array_key_exists('o', $_GET));
 
 ?>
 </ul>
