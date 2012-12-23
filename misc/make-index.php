@@ -1,16 +1,6 @@
 <ul>
 <?php
 
-/*
-
-$finfo = finfo_open(FILEINFO_MIME_TYPE); // mimetype 拡張モジュール風に mime タイプを返します
-foreach (glob("*") as $filename) {
-    echo finfo_file($finfo, $filename) . "\n";
-}
-finfo_close($finfo);
-
-*/
-
 function getFiles($in_path)
 {
 	$ret = array();
