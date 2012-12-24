@@ -3,6 +3,7 @@
 
 function getFiles($in_path)
 {
+	global $FINFO;
 	$ret = array();
 	$dh = opendir($in_path);
 	if (!$dh) {
@@ -17,9 +18,7 @@ function getFiles($in_path)
 		if (is_dir($path)) {
 			$ret[$fname] = array('p' => $path, 'c' => getFiles($path), 't' => NULL);
 		} elseif (is_file($path)) {
-			$finfo = finfo_open(FILEINFO_MIME_TYPE);
-			$ret[$fname] = array('p' => $path, 'c' => NULL, 't' => finfo_file($finfo, realpath($path)));
-			finfo_close($finfo);
+			$ret[$fname] = array('p' => $path, 'c' => NULL, 't' => finfo_file($FINFO, realpath($path)));
 		}
 	}
 	closedir($dh);
@@ -57,7 +56,9 @@ function makeLinks($in_tree, $in_open)
 	}
 }
 
+$FINFO = finfo_open(FILEINFO_MIME_TYPE);
 makeLinks(getFiles('..'), array_key_exists('o', $_GET));
+finfo_close($FINFO);
 
 ?>
 </ul>
