@@ -1,9 +1,8 @@
 <ul>
 <?php
 
-function getFiles($in_path)
+function getFiles($in_path, $in_finfo)
 {
-	global $FINFO;
 	$ret = array();
 	$dh = opendir($in_path);
 	if (!$dh) {
@@ -16,9 +15,9 @@ function getFiles($in_path)
 		}
 		$path = "{$in_path}/{$fname}";
 		if (is_dir($path)) {
-			$ret[$fname] = array('p' => $path, 'c' => getFiles($path), 't' => NULL);
+			$ret[$fname] = array('p' => $path, 'c' => getFiles($path, $in_finfo), 't' => NULL);
 		} elseif (is_file($path)) {
-			$ret[$fname] = array('p' => $path, 'c' => NULL, 't' => finfo_file($FINFO, realpath($path)));
+			$ret[$fname] = array('p' => $path, 'c' => NULL, 't' => finfo_file($in_finfo, realpath($path)));
 		}
 	}
 	closedir($dh);
@@ -36,7 +35,7 @@ function getFiles($in_path)
 
 function makeLinks($in_tree, $in_open)
 {
-	if ($in_open) {
+	if ($in_open > 0) {
 		$display = 'block';
 		$state = 'open';
 	} else {
@@ -47,7 +46,7 @@ function makeLinks($in_tree, $in_open)
 		if ($val['c']) {
 			print "<li><folder state='{$state}' onclick='action(this)'></folder> <span>{$key}</span>\n";
 			print "<ul style='display:{$display};'>\n";
-			makeLinks($val['c'], $in_open);
+			makeLinks($val['c'], ($in_open - 1));
 			print "</ul>\n";
 			print "</li>\n";
 		} else {
@@ -57,7 +56,7 @@ function makeLinks($in_tree, $in_open)
 }
 
 $FINFO = finfo_open(FILEINFO_MIME_TYPE);
-makeLinks(getFiles('..'), array_key_exists('o', $_GET));
+makeLinks(getFiles('..', $FINFO), array_key_exists('o', $_GET) ? $_GET['o'] : 0);
 finfo_close($FINFO);
 
 ?>
