@@ -1,0 +1,183 @@
+<script>
+
+var EXEC = [0, 0];
+var SELF = '/test-env/20121221-WindowPolicy/policy.html';
+
+function openLeft(in_owner, in_params)
+{
+	var ix = gWin.name2ix(in_owner);
+	var host = gWin.conf[ix[0]][(ix[1] + 1)].host;
+	var name = gWin.ix2name(ix[0], (ix[1] + 1));
+	var url = 'http://' + host + SELF + '?name=' + name;
+	if (in_params.length > 0) {
+		url += '&' + in_params.join('&');
+	}
+	window.open(url, name);
+}
+
+function openDown(in_owner, in_params)
+{
+	var ix = gWin.name2ix(in_owner);
+	var host = gWin.conf[(ix[0] + 1)][ix[1]].host;
+	var name = gWin.ix2name((ix[0] + 1), ix[1]);
+	var url = 'http://' + host + SELF + '?name=' + name;
+	if (in_params.length > 0) {
+		url += '&' + in_params.join('&');
+	}
+	var iframe = document.createElement('IFRAME');
+	document.documentElement.appendChild(iframe);
+	iframe.src = url;
+	iframe.style.width = '50%';
+	iframe.style.height = '50%';
+	iframe.style.border = 'solid 1px black'
+	iframe.contentWindow.name = name;
+}
+
+function execTest(in_owner)
+{
+}
+
+var gWin = {
+	conf : [
+		[
+			{
+				host : 'localhost',
+				open : [openLeft, openDown]
+			},
+			{
+				host : 'localhost',
+				open : [openLeft, openDown]
+			},
+			{
+				host : '127.0.0.1',
+				open : [openLeft, openDown]
+			},
+			{
+				host : 'localhost',
+				open : [openDown]
+			},
+		],
+		[
+			{
+				host : 'localhost',
+				open : [openDown]
+			},
+			{
+				host : 'localhost',
+				open : [openDown]
+			},
+			{
+				host : '127.0.0.1',
+				open : [openDown]
+			},
+			{
+				host : 'localhost',
+				open : [openDown]
+			},
+		],
+		[
+			{
+				host : '127.0.0.1',
+				open : [openDown]
+			},
+			{
+				host : '127.0.0.1',
+				open : [openDown]
+			},
+			{
+				host : '127.0.0.1',
+				open : [openDown]
+			},
+			{
+				host : '127.0.0.1',
+				open : [openDown]
+			}
+		],
+		[
+			{
+				host : 'localhost',
+				open : []
+			},
+			{
+				host : 'localhost',
+				open : []
+			},
+			{
+				host : '127.0.0.1',
+				open : []
+			},
+			{
+				host : 'localhost',
+				open : []
+			}
+		]
+	],
+	getConf : function(in_name) {
+		var ix = this.name2ix(in_name);
+		if (ix) {
+			return this.conf[ix[0]][ix[1]];
+		}
+		return null;
+	},
+	namePrefix : 'test',
+	ix2name : function(in_ix1, in_ix2) {
+		return this.namePrefix + '_' + in_ix1 + '_' + in_ix2;
+	},
+	name2ix : function(in_name) {
+		var e = in_name.split('_');
+		if (e.length != 3) {
+			return null;
+		}
+		return [Number(e[1]), Number(e[2])];
+	}
+};
+
+function getParam(in_url)
+{
+	if (in_url.indexOf('?') == -1) {
+		return null;
+	}
+	var ret = {};
+	var params = in_url.split('?')[1].split('&');
+	for (var i = 0; i < params.length; i++) {
+		var fv = params[i].split('=');
+		ret[fv[0]] = fv[1];
+	}
+	return ret;
+}
+
+var params = getParam(location.href);
+if (!params) {
+	params = {
+		name : gWin.ix2name(0, 0),
+		exec : gWin.ix2name(EXEC[0], EXEC[1]),
+		rand : Math.random()
+	};
+}
+
+var name = params.name;
+delete params.name;
+var func = gWin.getConf(name).open;
+for (var i = 0; i < func.length; i++) {
+	(func[i])(name, params);
+}
+
+if (name == params.exec) {
+	execTest(name);
+} else {
+	window.setInterval(function() {
+		var b = document.body;
+		var color = 'white';
+		if (location.hash) {
+			color = 'red';
+		}
+		b.style.backgroundColor = color;
+		if (b.getElementsByTagName('SPAN').length == 0) {
+			var span = document.createElement('SPAN');
+			span.appendChild(document.createTextNode(window.name));
+			b.appendChild(span);
+		}
+	}, 1000);
+}
+
+</script>
