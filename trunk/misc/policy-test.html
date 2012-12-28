@@ -8,6 +8,7 @@ var EXEC = {
 var SELF = '/test-env/20121221-WindowPolicy/policy-test.html';
 var HOST_A = 'localhost';
 var HOST_B = '127.0.0.1';
+
 /*
 var SELF = '/camouflageblog/20121228/policy-test.html';
 var HOST_A = 'www28.atpages.jp';
@@ -187,10 +188,10 @@ function getParam(in_url)
 var params = getParam(location.href);
 if (!params) {
 	params = {
-		_name : gWin.ix2name(0, 0),
 		_exec : gWin.ix2name(EXEC.tate, EXEC.yoko),
 		_rand : Math.random()
 	};
+	location.href = makeUrl(0, 0, params);
 }
 
 var _self = params._name;
@@ -211,7 +212,7 @@ if (_self == params._exec) {
 		}
 		b.style.backgroundColor = color;
 		if (b.getElementsByTagName('SPAN').length == 0) {
-			var ix = gWin.name2ix(window.name)
+			var ix = gWin.name2ix(window.name);
 			var span = document.createElement('SPAN');
 			span.appendChild(document.createTextNode('(' + ix.tate + ', ' + ix.yoko + ')'));
 			b.appendChild(span);
