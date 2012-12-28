@@ -1,113 +1,137 @@
 <script>
 
-var EXEC = [0, 0];
+var EXEC = {
+	tate : 0,
+	yoko : 0
+};
 var SELF = '/test-env/20121221-WindowPolicy/policy-test.html';
+var HOST_A = 'localhost';
+var HOST_B = '127.0.0.1';
 
-function openLeft(in_owner, in_params)
+function makeUrl(in_tate, in_yoko, in_params)
 {
-	var ix = gWin.name2ix(in_owner);
-	var host = gWin.conf[ix[0]][(ix[1] + 1)].host;
-	var name = gWin.ix2name(ix[0], (ix[1] + 1));
-	var url = 'http://' + host + SELF + '?name=' + name;
-	if (in_params.length > 0) {
-		url += '&' + in_params.join('&');
+	var url = 'http://' + gWin.conf[in_tate][in_yoko].host + SELF;
+	var query = '_name=' + gWin.ix2name(in_tate, in_yoko);
+	for (var field in in_params) {
+		query += '&' + field + '=' + in_params[field];
 	}
-	window.open(url, name);
+	return url + '?' + query;
 }
 
-function openDown(in_owner, in_params)
+function openLeft(in_name, in_params)
 {
-	var ix = gWin.name2ix(in_owner);
-	var host = gWin.conf[(ix[0] + 1)][ix[1]].host;
-	var name = gWin.ix2name((ix[0] + 1), ix[1]);
-	var url = 'http://' + host + SELF + '?name=' + name;
-	if (in_params.length > 0) {
-		url += '&' + in_params.join('&');
-	}
+	var ix = gWin.name2ix(in_name);
+	var url = makeUrl(ix.tate, ix.yoko + 1, in_params);
+	window.open(url, gWin.ix2name(ix.tate, ix.yoko + 1));
+}
+
+function openDown(in_name, in_params)
+{
+	var ix = gWin.name2ix(in_name);
+	var url = makeUrl(ix.tate + 1, ix.yoko, in_params);
 	var iframe = document.createElement('IFRAME');
 	document.documentElement.appendChild(iframe);
 	iframe.src = url;
-	iframe.style.width = '50%';
+	iframe.style.width = '80%';
 	iframe.style.height = '50%';
 	iframe.style.border = 'solid 1px black'
-	iframe.contentWindow.name = name;
+	iframe.contentWindow.name = gWin.ix2name(ix.tate + 1, ix.yoko);
 }
 
-function execTest(in_owner)
+function makeTestLink(in_params)
 {
+	var table = document.createElement('TABLE');
+	for (var i = 0; i < gWin.conf.length; i++) {
+		var tr = document.createElement('TR');
+		for (var j = 0; j < gWin.conf[i].length; j++) {
+			var a = document.createElement('A');
+			a.href = makeUrl(i, j, in_params) + '#ADDED';
+			a.target = gWin.ix2name(i, j);
+			a.appendChild(document.createTextNode('(' + i + ', ' + j + ')'));
+			var td = document.createElement('TD');
+			td.appendChild(a);
+			td.style.border = 'solid 1px black';
+			tr.appendChild(td);
+		}
+		table.appendChild(tr);
+	}
+	table.style.borderCollapse = 'collapse';
+	table.style.border = 'solid 1px black';
+	table.style.margin = '1em';
+	document.documentElement.appendChild(table);
 }
 
 var gWin = {
 	conf : [
 		[
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openLeft, openDown]
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openLeft, openDown]
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openLeft, openDown]
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openDown]
 			},
 		],
 		[
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openDown]
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openDown]
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openDown]
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : [openDown]
 			},
 		],
 		[
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openDown]
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openDown]
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openDown]
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : [openDown]
 			}
 		],
 		[
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : []
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : []
 			},
 			{
-				host : '127.0.0.1',
+				host : HOST_B,
 				open : []
 			},
 			{
-				host : 'localhost',
+				host : HOST_A,
 				open : []
 			}
 		]
@@ -115,20 +139,23 @@ var gWin = {
 	getConf : function(in_name) {
 		var ix = this.name2ix(in_name);
 		if (ix) {
-			return this.conf[ix[0]][ix[1]];
+			return this.conf[ix.tate][ix.yoko];
 		}
 		return null;
 	},
 	namePrefix : 'test',
-	ix2name : function(in_ix1, in_ix2) {
-		return this.namePrefix + '_' + in_ix1 + '_' + in_ix2;
+	ix2name : function(in_tate, in_yoko) {
+		return this.namePrefix + '_' + in_tate + '_' + in_yoko;
 	},
 	name2ix : function(in_name) {
 		var e = in_name.split('_');
 		if (e.length != 3) {
 			return null;
 		}
-		return [Number(e[1]), Number(e[2])];
+		return {
+			tate : Number(e[1]),
+			yoko : Number(e[2])
+		};
 	}
 };
 
@@ -149,21 +176,21 @@ function getParam(in_url)
 var params = getParam(location.href);
 if (!params) {
 	params = {
-		name : gWin.ix2name(0, 0),
-		exec : gWin.ix2name(EXEC[0], EXEC[1]),
-		rand : Math.random()
+		_name : gWin.ix2name(0, 0),
+		_exec : gWin.ix2name(EXEC.tate, EXEC.yoko),
+		_rand : Math.random()
 	};
 }
 
-var name = params.name;
-delete params.name;
-var func = gWin.getConf(name).open;
+var _self = params._name;
+delete params._name;
+var func = gWin.getConf(_self).open;
 for (var i = 0; i < func.length; i++) {
-	(func[i])(name, params);
+	(func[i])(_self, params);
 }
 
-if (name == params.exec) {
-	execTest(name);
+if (_self == params._exec) {
+	makeTestLink(params);
 } else {
 	window.setInterval(function() {
 		var b = document.body;
@@ -173,8 +200,9 @@ if (name == params.exec) {
 		}
 		b.style.backgroundColor = color;
 		if (b.getElementsByTagName('SPAN').length == 0) {
+			var ix = gWin.name2ix(window.name)
 			var span = document.createElement('SPAN');
-			span.appendChild(document.createTextNode(window.name));
+			span.appendChild(document.createTextNode('(' + ix.tate + ', ' + ix.yoko + ')'));
 			b.appendChild(span);
 		}
 	}, 1000);
