@@ -1,7 +1,7 @@
 <script>
 
 var EXEC = {
-	tate : 0,
+	tate : 1,
 	yoko : 0
 };
 
@@ -18,7 +18,7 @@ var HOST_B = '49.212.30.56';
 function makeUrl(in_tate, in_yoko, in_params)
 {
 	var url = 'http://' + gWin.conf[in_tate][in_yoko].host + SELF;
-	var query = '_name=' + gWin.ix2name(in_tate, in_yoko);
+	var query = '_self=' + gWin.ix2name(in_tate, in_yoko);
 	for (var field in in_params) {
 		query += '&' + field + '=' + in_params[field];
 	}
@@ -194,8 +194,8 @@ if (!params) {
 	location.href = makeUrl(0, 0, params);
 }
 
-var _self = params._name;
-delete params._name;
+var _self = params._self;
+delete params._self;
 var func = gWin.getConf(_self).open;
 for (var i = 0; i < func.length; i++) {
 	(func[i])(_self, params);
@@ -212,6 +212,9 @@ if (_self == params._exec) {
 		}
 		b.style.backgroundColor = color;
 		if (b.getElementsByTagName('SPAN').length == 0) {
+			if (!window.name) {
+				window.name = gWin.ix2name(0, 0);
+			}
 			var ix = gWin.name2ix(window.name);
 			var span = document.createElement('SPAN');
 			span.appendChild(document.createTextNode('(' + ix.tate + ', ' + ix.yoko + ')'));
