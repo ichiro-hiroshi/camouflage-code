@@ -4,9 +4,15 @@ var EXEC = {
 	tate : 0,
 	yoko : 0
 };
+
 var SELF = '/test-env/20121221-WindowPolicy/policy-test.html';
 var HOST_A = 'localhost';
 var HOST_B = '127.0.0.1';
+/*
+var SELF = '/camouflageblog/20121228/policy-test.html';
+var HOST_A = 'www28.atpages.jp';
+var HOST_B = '49.212.30.56';
+*/
 
 function makeUrl(in_tate, in_yoko, in_params)
 {
@@ -44,12 +50,17 @@ function makeTestLink(in_params)
 	for (var i = 0; i < gWin.conf.length; i++) {
 		var tr = document.createElement('TR');
 		for (var j = 0; j < gWin.conf[i].length; j++) {
-			var a = document.createElement('A');
-			a.href = makeUrl(i, j, in_params) + '#ADDED';
-			a.target = gWin.ix2name(i, j);
-			a.appendChild(document.createTextNode('(' + i + ', ' + j + ')'));
+			if ((i == EXEC.tate) && (j == EXEC.yoko)) {
+				var cell = document.createElement('SPAN');
+				cell.style.backgroundColor = 'yellow';
+			} else {
+				var cell = document.createElement('A');
+				cell.href = makeUrl(i, j, in_params) + '#ADDED';
+				cell.target = gWin.ix2name(i, j);
+			}
+			cell.appendChild(document.createTextNode('(' + i + ', ' + j + ')'));
 			var td = document.createElement('TD');
-			td.appendChild(a);
+			td.appendChild(cell);
 			td.style.border = 'solid 1px black';
 			tr.appendChild(td);
 		}
