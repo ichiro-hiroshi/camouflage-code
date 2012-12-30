@@ -1,0 +1,73 @@
+<script type='text/javascript'>
+
+base64 = {
+	_c : ('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/').split(''),
+	_utf8str2arr : function(utf8str) {
+		var arr = [];
+		var enc = encodeURIComponent(utf8str);
+		for (var i = 0; i < enc.length; i++) {
+			if (enc.charAt(i) == '%') {
+				var hex = enc.charAt(i + 1) + enc.charAt(i + 2);
+				arr.push(parseInt(hex, 16));
+				i = i + 2;
+			} else {
+				arr.push(enc.charCodeAt(i));
+			}
+		}
+		return arr;
+	},
+	_mapping : function(d0, d1, d2) {
+		var ret = this._c[(d0 >> 2) & 0x3f];
+		if (d1 != null) {
+			ret += this._c[((d0 << 4) + (d1 >> 4)) & 0x3f];
+			if (d2 != null) {
+  				ret += this._c[((d1 << 2) + (d2 >> 6)) & 0x3f] + this._c[d2 & 0x3f];
+			} else {
+  				ret += this._c[(d1 << 2) & 0x3f] + '=';
+			}
+		} else {
+			ret += this._c[(d0 << 4) & 0x3f] + '==';
+		}
+		return ret;
+	},
+	encode : function(utf8str) {
+		var ret = [];
+		var arr = this._utf8str2arr(utf8str);
+		for (var i = 0; i < arr.length - (arr.length % 3); i += 3) {
+			ret.push(this._mapping(arr[i], arr[i + 1], arr[i + 2]));
+		}
+		if (arr.length % 3 == 2) {
+			ret.push(this._mapping(arr[i], arr[i + 1], null));
+		} else if (arr.length % 3 == 1) {
+			ret.push(this._mapping(arr[i], null, null));
+		}
+		return ret.join('');
+	}
+};
+
+</script>
+<script type='text/worker-script'>
+
+onmessage = function (e) {
+	postMessage('received your message : ' + e.data);
+};
+
+</script>
+<script>
+
+var scripts = document.getElementsByTagName('SCRIPT');
+var ws = null;
+for (var i = 0; i < scripts.length; i++) {
+	if (scripts.item(i).type == 'text/worker-script') {
+		ws = scripts.item(i).textContent;
+	}
+}
+if (ws) {
+	var worker = new Worker('data:text/javascript;base64,' + base64.encode(ws));
+	worker.postMessage('hello');
+	worker.addEventListener('message', function(e) {
+		alert(e.data);
+	}, false);
+}
+
+</script>
