@@ -60,6 +60,7 @@ var ws = null;
 for (var i = 0; i < scripts.length; i++) {
 	if (scripts.item(i).type == 'text/worker-script') {
 		ws = scripts.item(i).textContent;
+		break;
 	}
 }
 if (ws) {
