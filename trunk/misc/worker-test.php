@@ -29,7 +29,7 @@ function make_worker()
 	print <<<EOC
 function hook(response)
 {
-    postMessage(response);
+	postMessage(response);
 }
 
 onmessage = function (e) {
@@ -37,7 +37,7 @@ onmessage = function (e) {
 	for (var prop in e.data.params) {
 		url += '&' + prop + '=' + e.data.params[prop];
 	}
-    importScripts(url);
+	importScripts(url);
 };
 EOC;
 }
@@ -56,33 +56,37 @@ if (array_key_exists(REQ, $_GET) && in_array($_GET[REQ], $handler)) {
 
 function callback(response)
 {
-    //alert(response.msg);
-	document.write(response.msg);
+	alert(response.msg);
+	//document.write(response.msg);
 }
 
 window.onload = function() {
-    alert('onload');
+	alert('onload');
 };
 
 var ENTRY = '{$HOSTA}?{$REQ}=extjs';
 //var ENTRY = '{$HOSTB}?{$REQ}=extjs';
 
-/* test#2 */
-if (false) {
-    var t = document.getElementsByTagName('SCRIPT')[0];
-    var s = document.createElement('SCRIPT');
-    s.src = ENTRY + '&{$HOOK}=callback';
-    t.parentNode.insertBefore(s, t);
-}
-
 /* test#1 */
 if (false) {
-    document.write('<script type="text/javascript" src="');
-    document.write(ENTRY + '&{$HOOK}=callback"></s' + 'cript>');
+	document.write('<script type="text/javascript" src="');
+	document.write(ENTRY + '&{$HOOK}=callback"></s' + 'cript>');
+}
+
+/* test#2 */
+if (true) {
+	var f = function() {
+		var t = document.getElementsByTagName('SCRIPT')[0];
+		var s = document.createElement('SCRIPT');
+		s.src = ENTRY + '&{$HOOK}=callback';
+		t.parentNode.insertBefore(s, t);
+	};
+	f();
+	//window.setTimeout(f, 0);
 }
 
 /* test#3 */
-if (true) {
+if (false) {
 	xhr = new XMLHttpRequest();
 	xhr.onreadystatechange = (function(in_xhr, in_callback) {
 		return function() {
@@ -97,10 +101,10 @@ if (true) {
 
 /* test#1 */
 if (false) {
-    var worker = new Worker('{$HOSTA}?{$REQ}=worker');
-    worker.postMessage({entry : ENTRY, params : {}});
+	var worker = new Worker('{$HOSTA}?{$REQ}=worker');
+	worker.postMessage({entry : ENTRY, params : {}});
 	worker.addEventListener('message', function(e) {
-        callback(e.data);
+		callback(e.data);
 	}, false);
 }
 
