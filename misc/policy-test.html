@@ -1,7 +1,7 @@
 <script>
 
 var EXEC = {
-	tate : 1,
+	tate : 0,
 	yoko : 0
 };
 
@@ -90,6 +90,10 @@ var gWin = {
 			},
 			{
 				host : HOST_A,
+				open : [openLeft, openDown]
+			},
+			{
+				host : HOST_A,
 				open : [openDown]
 			},
 		],
@@ -110,8 +114,16 @@ var gWin = {
 				host : HOST_A,
 				open : [openDown]
 			},
+			{
+				host : HOST_A,
+				open : [openDown]
+			},
 		],
 		[
+			{
+				host : HOST_B,
+				open : [openDown]
+			},
 			{
 				host : HOST_B,
 				open : [openDown]
@@ -131,11 +143,29 @@ var gWin = {
 		],
 		[
 			{
-				host : HOST_A,
-				open : []
+				host : HOST_B,
+				open : [openDown]
 			},
 			{
-				host : HOST_A,
+				host : HOST_B,
+				open : [openDown]
+			},
+			{
+				host : HOST_B,
+				open : [openDown]
+			},
+			{
+				host : HOST_B,
+				open : [openDown]
+			},
+			{
+				host : HOST_B,
+				open : [openDown]
+			}
+		],
+		[
+			{
+				host : HOST_B,
 				open : []
 			},
 			{
@@ -143,7 +173,15 @@ var gWin = {
 				open : []
 			},
 			{
-				host : HOST_A,
+				host : HOST_B,
+				open : []
+			},
+			{
+				host : HOST_B,
+				open : []
+			},
+			{
+				host : HOST_B,
 				open : []
 			}
 		]
@@ -206,7 +244,11 @@ if (_self == params._exec) {
 } else {
 	window.setInterval(function() {
 		var b = document.body;
-		var color = 'white';
+		if (location.href.indexOf(HOST_A) > 0) {
+			var color = '#ccffcc';
+		} else if (location.href.indexOf(HOST_B) > 0) {
+			var color = '#ccccff';
+		}
 		if (location.hash) {
 			color = 'red';
 		}
@@ -222,5 +264,6 @@ if (_self == params._exec) {
 		}
 	}, 1000);
 }
+
 
 </script>
