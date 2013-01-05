@@ -1,0 +1,156 @@
+<body>
+<script type='text/javascript' src='./lib/zip.js'></script>
+<script>
+
+zip.workerScriptsPath = "./lib/";
+
+function DP(in_data)
+{
+	if (!console) {
+		return;
+	}
+	var _viewObj = function(in_name, in_data, in_level) {
+		var sp = '';
+		for (var i = 0; i < in_level; i++) {
+			sp += '  ';
+		}
+		var t = typeof(in_data);
+		switch(t) {
+		case 'string' :
+		case 'number' :
+			if (in_name != 'null') {
+				console.log(sp + in_name + ' : ' + in_data + ' (' + t + ')');
+			} else {
+				console.log(sp + in_data + ' (' + t + ')');
+			}
+			break;
+		case 'object' :
+			if (typeof(in_data.length) == 'number') {
+				if (in_name != 'null') {
+					console.log(sp + in_name + ' (array)');
+				} else {
+					console.log(sp + '(array)');
+				}
+				for (var i = 0; i < in_data.length; i++) {
+					_viewObj(i, in_data[i], in_level + 1);
+				}
+			} else if (in_data) {
+				if (in_name != 'null') {
+					console.log(sp + in_name + ' (object)');
+				} else {
+					console.log(sp + '(object)');
+				}
+				for (var prop in in_data) {
+					_viewObj(prop, in_data[prop], in_level + 1);
+				}
+			} else {
+				console.log(sp + 'null');
+			}
+			break;
+		default :
+			break;
+		}
+	};
+	_viewObj(null, in_data, 0);
+}
+
+function BIND(callback, self)
+{
+	return function() {
+		callback.apply(self, arguments);
+	}
+}
+
+var zipMgr = {
+	reader : null,
+	callback : function(in_text) {
+		return;
+	},
+	checker : function(in_path) {
+		return false;
+	},
+	handleErr : function(in_err) {
+		DP(in_err);
+	},
+	handleProgress : function(in_cur, in_total) {
+		DP(in_cur + '(' + in_total + ')');
+	},
+	handleClose : function() {
+		DP('closed');
+	},
+	handleDone : function(in_text) {
+		(this.callback)(in_text);
+		var handleClose = BIND(this.handleClose, this);
+		this.reader.close(handleClose);
+		this.reader = null;
+		this.callback = null;
+		this.checker = null;
+	},
+	handleStart : function(in_reader) {
+		this.reader = in_reader;
+		var handleEntries = BIND(this.handleEntries, this);
+		this.reader.getEntries(handleEntries);
+	},
+	handleEntries : function(in_entries) {
+		if (in_entries.length > 0) {
+			for (var i = 0; i < in_entries.length; i++) {
+				if (!(this.checker)(in_entries[i].filename)) {
+					continue;
+				}
+				var handleDone = BIND(this.handleDone, this);
+				var handleProgress = BIND(this.handleProgress, this);
+				in_entries[i].getData(new zip.TextWriter(), handleDone, handleProgress);
+				break;
+			}
+		}
+	},
+	parse : function(in_data, in_callback, in_checker) {
+		this.callback = in_callback;
+		this.checker = in_checker;
+		var handleStart = BIND(this.handleStart, this);
+		var handleErr = BIND(this.handleErr, this);
+		zip.createReader(new zip.Data64URIReader(in_data), handleStart, handleErr);
+	}
+};
+
+function handleXML(in_xml)
+{
+	var parser = new DOMParser();
+	var xmldoc = parser.parseFromString(in_xml, 'application/xml');
+	alert(xmldoc);
+}
+
+function checkPath(in_path)
+{
+	if (in_path.indexOf('xl/worksheets/sheet1.xml') == 0) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+function main(in_file)
+{
+	with (new FileReader()) {
+		onload = function(e) {
+			zipMgr.parse(e.target.result, handleXML, checkPath);
+		}
+		readAsDataURL(in_file);
+	}
+}
+
+window.addEventListener('dragover', function(e) {
+	e.preventDefault();
+}, false);
+
+window.addEventListener('drop', function(e) {
+	main(e.dataTransfer.files[0]);
+	e.preventDefault();
+	e.stopPropagation();
+}, false);
+
+</script>
+</body>
+<style type='text/css'>
+BODY {background-color: green;}
+</style>
