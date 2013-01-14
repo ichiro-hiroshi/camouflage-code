@@ -9,49 +9,19 @@ function DP(in_data)
 	if (!console) {
 		return;
 	}
-	var _viewObj = function(in_name, in_data, in_level) {
-		var sp = '';
-		for (var i = 0; i < in_level; i++) {
-			sp += '  ';
-		}
-		var t = typeof(in_data);
-		switch(t) {
-		case 'string' :
-		case 'number' :
-			if (in_name != 'null') {
-				console.log(sp + in_name + ' : ' + in_data + ' (' + t + ')');
-			} else {
-				console.log(sp + in_data + ' (' + t + ')');
+	var _inspect = function(in_obj, in_indent) {
+		for (var prop in in_obj) {
+			var child = false;
+			if ((typeof(in_obj[prop]) == 'object') && (in_obj[prop])) {
+				child = true;
 			}
-			break;
-		case 'object' :
-			if (typeof(in_data.length) == 'number') {
-				if (in_name != 'null') {
-					console.log(sp + in_name + ' (array)');
-				} else {
-					console.log(sp + '(array)');
-				}
-				for (var i = 0; i < in_data.length; i++) {
-					_viewObj(i, in_data[i], in_level + 1);
-				}
-			} else if (in_data) {
-				if (in_name != 'null') {
-					console.log(sp + in_name + ' (object)');
-				} else {
-					console.log(sp + '(object)');
-				}
-				for (var prop in in_data) {
-					_viewObj(prop, in_data[prop], in_level + 1);
-				}
-			} else {
-				console.log(sp + 'null');
+			console.log(in_indent + prop + ' : ' + in_obj[prop]);
+			if (child) {
+				_inspect(in_obj[prop], in_indent + '  ');
 			}
-			break;
-		default :
-			break;
 		}
 	};
-	_viewObj(null, in_data, 0);
+	_inspect({DP : in_data}, '');
 }
 
 function BIND(callback, self)
