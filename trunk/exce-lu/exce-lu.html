@@ -33,28 +33,35 @@ function BIND(callback, self)
 
 var zipMgr = {
 	reader : null,
-	callback : function(in_text) {
-		return;
-	},
-	checker : function(in_path) {
-		return false;
-	},
+	reading : 0,
+	checker : null,
+	callback : null,
+	done : null,
 	handleErr : function(in_err) {
 		DP(in_err);
 	},
-	handleProgress : function(in_cur, in_total) {
-		DP(in_cur + '(' + in_total + ')');
+	handleProgress : function(in_filename) {
+		return function(in_cur, in_total) {
+			DP(in_filename + ' : ' + in_cur + '(' + in_total + ')');
+		};
 	},
 	handleClose : function() {
 		DP('closed');
 	},
-	handleDone : function(in_text) {
-		(this.callback)(in_text);
-		var handleClose = BIND(this.handleClose, this);
-		this.reader.close(handleClose);
-		this.reader = null;
-		this.callback = null;
-		this.checker = null;
+	handleDone : function(in_filename) {
+		return function(in_text) {
+			(this.callback)(in_filename, in_text);
+			var handleClose = BIND(this.handleClose, this);
+			if (--this.reading > 0) {
+				return;
+			}
+			this.reader.close(handleClose);
+			(this.done)();
+			this.reader = null;
+			this.checker = null;
+			this.callback = null;
+			this.done = null;
+		};
 	},
 	handleStart : function(in_reader) {
 		this.reader = in_reader;
@@ -64,46 +71,50 @@ var zipMgr = {
 	handleEntries : function(in_entries) {
 		if (in_entries.length > 0) {
 			for (var i = 0; i < in_entries.length; i++) {
-				if (!(this.checker)(in_entries[i].filename)) {
+				var filename = in_entries[i].filename;
+				if ((this.checker)(filename)) {
+					this.reading++;
+				} else {
 					continue;
 				}
-				var handleDone = BIND(this.handleDone, this);
-				var handleProgress = BIND(this.handleProgress, this);
+				var handleDone = BIND(this.handleDone(filename), this);
+				var handleProgress = BIND(this.handleProgress(filename), this);
 				in_entries[i].getData(new zip.TextWriter(), handleDone, handleProgress);
-				break;
 			}
 		}
 	},
-	parse : function(in_data, in_callback, in_checker) {
+	parse : function(in_data, in_callback, in_checker, in_done) {
 		this.callback = in_callback;
 		this.checker = in_checker;
+		this.done = in_done;
 		var handleStart = BIND(this.handleStart, this);
 		var handleErr = BIND(this.handleErr, this);
 		zip.createReader(new zip.Data64URIReader(in_data), handleStart, handleErr);
 	}
 };
 
-function handleXML(in_xml)
-{
-	var parser = new DOMParser();
-	var xmldoc = parser.parseFromString(in_xml, 'application/xml');
-	alert(xmldoc);
-}
-
-function checkPath(in_path)
-{
-	if (in_path.indexOf('xl/worksheets/sheet1.xml') == 0) {
-		return true;
-	} else {
-		return false;
-	}
-}
+var xlsxObj = {
+	docs : {}
+};
 
 function main(in_file)
 {
 	with (new FileReader()) {
 		onload = function(e) {
-			zipMgr.parse(e.target.result, handleXML, checkPath);
+			zipMgr.parse(e.target.result,
+				function(in_filename, in_xml) {
+					xlsxObj.docs[in_filename] = (new DOMParser()).parseFromString(in_xml, 'application/xml');
+				},
+				function(in_path) {
+					if (in_path.match(/\.xml$/)) {
+						return true;
+					} else {
+						return false;
+					}
+				},
+				function() {
+				}
+			);
 		}
 		readAsDataURL(in_file);
 	}
