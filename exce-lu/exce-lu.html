@@ -1,4 +1,3 @@
-<body>
 <script type='text/javascript' src='./lib/zip.js'></script>
 <script>
 
@@ -6,6 +5,7 @@ zip.workerScriptsPath = "./lib/";
 
 function DP(in_data)
 {
+	return;
 	if (!console) {
 		return;
 	}
@@ -93,8 +93,85 @@ var zipMgr = {
 	}
 };
 
+function _1st_value(parent, ename)
+{
+	var elems = parent.getElementsByTagName(ename);
+	if (elems.length > 0) {
+		return elems.item(0).firstChild.nodeValue;
+	} else {
+		return null;
+	}
+}
+
+function _r2rc(in_r)
+{
+	if (!in_r.match(/^([A-Z]+)([0-9]+)$/)) {
+		return null;
+	}
+	var col = RegExp.$1;
+	var v = 0;
+	for (var i = 0; i < col.length; i++) {
+		v += (col.charCodeAt(i) - 64) * Math.pow(26, col.length - i - 1);
+	}
+	return {row : (RegExp.$2 - 1), col : (v - 1)};
+}
+
 var xlsxObj = {
-	docs : {}
+	docs : {},
+	getTable : function(in_sheet) {
+		var sheet = in_sheet;
+		if (!sheet) {
+			var sheet = 'sheet1.xml'
+		}
+		var sharedStrings = (this.docs['xl/sharedStrings.xml']).getElementsByTagName('si');
+		var sheetData = (this.docs['xl/worksheets/' + sheet]).getElementsByTagName('sheetData').item(0);
+		/*
+			<sheetData>
+				<row>
+					<c r='...' t='...'><v>...</v></c>
+					...
+				</row>
+				...
+			</sheetData>
+		*/
+		var max = {
+			row : 0,
+			col : 0
+		};
+		var nodes = {};
+		var rows = sheetData.getElementsByTagName('row');
+		for (var i = 0; i < rows.length; i++) {
+			var cells = rows.item(i).getElementsByTagName('c');
+			for (var j = 0; j < cells.length; j++) {
+				var c = cells.item(j);
+				var r = _r2rc(c.getAttribute('r'));
+				var v = _1st_value(c, 'v');
+				if (c.getAttribute('t') == 's') {
+					v = _1st_value(sharedStrings.item(v), 't');
+				}
+				/* style should be set */
+				nodes[r.row + '_' + r.col] = v;
+				if (max.row < r.row) {
+					max.row = r.row;
+				}
+				if (max.col < r.col) {
+					max.col = r.col;
+				}
+			}
+		}
+		var ret = [];
+		for (var row = 0; row < max.row + 1; row++) {
+			ret[row] = [];
+			for (var col = 0; col < max.col + 1; col++) {
+				if (typeof(nodes[row + '_' + col]) == 'undefined') {
+					ret[row][col] = null;
+				} else {
+					ret[row][col] = nodes[row + '_' + col];
+				}
+			}
+		}
+		return ret;
+	}
 };
 
 function main(in_file)
@@ -113,6 +190,19 @@ function main(in_file)
 					}
 				},
 				function() {
+					var tbl = document.getElementById('tbl');
+					var dat = xlsxObj.getTable();
+					for (var row = 0; row < dat.length; row++) {
+						var tr = document.createElement('TR');
+						for (var col = 0; col < dat[row].length; col++) {
+							var td = document.createElement('TD');
+							if (dat[row][col] != null) {
+								td.appendChild(document.createTextNode(dat[row][col]));
+							}
+							tr.appendChild(td);
+						}
+						tbl.appendChild(tr);
+					}
 				}
 			);
 		}
@@ -131,7 +221,14 @@ window.addEventListener('drop', function(e) {
 }, false);
 
 </script>
-</body>
 <style type='text/css'>
-BODY {background-color: green;}
+TABLE {
+	border-collapse: collapse;
+}
+TABLE, TD {
+	border: solid 1px black;
+	padding: 3px;
+}
 </style>
+<table id='tbl'>
+</table>
