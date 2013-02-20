@@ -1,0 +1,187 @@
+<script>
+
+function DP1(in_data)
+{
+	if (!console) {
+		return;
+	}
+	var _inspect = function(in_obj, in_indent) {
+		for (var prop in in_obj) {
+			var child = false;
+			if ((typeof(in_obj[prop]) == 'object') && (in_obj[prop])) {
+				child = true;
+			}
+			console.log(in_indent + prop + ' : ' + in_obj[prop]);
+			if (child) {
+				_inspect(in_obj[prop], in_indent + '  ');
+			}
+		}
+	};
+	_inspect({DP1 : in_data}, '');
+}
+
+function DP2(i, j, desc)
+{
+	if (!desc) {
+		desc = 'pos';
+	}
+	console.log(desc + ' (' + i + ', ' + j + ')');
+}
+
+var sed = {
+	_sLen : -1,
+	_dLen : -1,
+	_shortcutNode : [],
+	setUp : function(arrSrc, arrDst) {
+		/*
+			arrSrc : [a, b, c, d, e]
+			arrDst : [a, b, d, a]
+
+			   0:- 1:a 2:b 3:d 4:a
+			0:-┌─┬─┬─┬─┐
+			   │＼│  │  │＼│
+			1:a├─┼─┼─┼─┤
+			   │  │＼│  │  │
+			2:b├─┼─┼─┼─┤
+			   │  │  │  │  │
+			3:c├─┼─┼─┼─┤
+			   │  │  │＼│  │
+			4:d├─┼─┼─┼─┤
+			   │  │  │  │  │
+			5:e└─┴─┴─┴─┘
+
+			in this case, shortcut :
+
+				(0, 0) --> (1, 1)
+				(0, 3) --> (1, 4)
+				(1, 1) --> (2, 2)
+				(3, 2) --> (4, 3)
+
+			in this case,
+
+				this._sLen : 6
+				this._dLen : 5
+				this._shortcutNode : [
+					[0, 3],
+					[1],
+					[],
+					[2],
+					[]
+				]
+		*/
+		for (var i = 0; i < arrSrc.length; i++) {
+			this._shortcutNode[i] = [];
+			for (var j = 0; j < arrDst.length; j++) {
+				if (arrSrc[i] == arrDst[j]) {
+					this._shortcutNode[i].push(j);
+				}
+			}
+		}
+	},
+	// (ixs, ixd) より左下方向のショートカット確認
+	shortcutIsExist : function(ixs, ixd) {
+		for (var i = ixs; i < this._sLen; i++) {
+			var node = this._shortcutNode[i];
+			for (var j = 0; j < node.length; j++) {
+				if (node[j] >= ixd) {
+					return true;
+				}
+			}
+		}
+		return false;
+	},
+	// (ixs1, ixd1) から (ixs2, ixd2) のショートカットを用いない経路配列
+	edgeRoute : function(ixs1, ixd1, ixs2, ixd2) {
+		var route = [];
+		for (var j = ixd1; j <= ixd2; j++) {
+			route.push({s : ixs1, d : j, c : 1});
+		}
+		for (var i = ixs1 + 1; i <= ixd2; i++) {
+			route.push({s : i, d : ixd2, c : 1});
+		}
+		return route;
+	},
+	// (ixs, ixd) 起点の連続したショートカットの配列
+	shortcutRoute : function(ixs, ixd) {
+		DP2(ixs, ixd, 'shortcutRoute');
+		var route = [{s : ixs, d : ixd, c : 0}];
+		if ((ixs < this._sLen - 1) && (ixd < this._dLen - 1)) {
+			var node = this._shortcutNode[ixs];
+			for (var j = 0; j < node.length; j++) {
+				if (node[j] == ixd) {
+					return route.concat(this.shortcutRoute(ixs + 1, ixd + 1));
+				} else if (node[j] > ixd) {
+					break;
+				}
+			}
+		}
+		return route;
+	},
+	// s（下）方向に逐次最小コストを確認
+	findRoute2Src : function(ixs, ixd) {
+		DP2(ixs, ixd, 'findRoute2Src');
+		var routes = [];
+		for (var i = ixs; i < this._sLen; i++) {
+			if (i > ixs) {
+				// s 方向のコスト計算
+				routes[i] = this.edgeRoute(ixs, ixd, i - 1, ixd);
+			}
+			if (this.shortcutIsExist(i, ixd)) {
+				routes[i] = this.findRoute2Dst(i, ixd);
+			} else {
+				routes[i] = this.edgeRoute(i, ixd, this._sLen - 1, this._dLen - 1);
+				break;
+			}
+		}
+		var min = {
+			cost : Number.MAX_VALUE,
+			ix : -1
+		};
+		for (var k = 0; k < routes.length; k++) {
+			var ro = routes[k];
+			var cost = 0;
+			for (var l = 0; l < ro.length; l++) {
+				cost += ro[l].c;
+			}
+			if (cost < min.cost) {
+				min.cost = cost;
+				min.ix = k;
+			}
+		}
+		return routes[min.ix];
+	},
+	// d（左）方向にコスト計算
+	findRoute2Dst : function(ixs, ixd) {
+		DP2(ixs, ixd, 'findRoute2Dst');
+		var route = [];
+		for (var j = ixd; j < this._dLen; j++) {
+			var sarr = this.shortcutRoute(ixs, j);
+			route = route.concat(sarr);
+			if (sarr.length > 1) {
+				var edge = route.pop();
+				return route.concat(this.findRoute2Src(edge.s, edge.d));
+			}
+		}
+		// ショートカットなく左端に達した場合
+		return route.concat(this.edgeRoute(ixs, this._dLen - 1, this._sLen - 1, this._dLen - 1));
+	}
+};
+
+function txt2array(txt)
+{
+}
+
+function diff(src, dst)
+{
+}
+
+sed.setUp(
+	['a', 'b', 'c', 'd', 'e'],
+	['a', 'b', 'd', 'a']
+);
+
+DP1(sed.findRoute2Src(0, 0));
+
+
+</script>
+
