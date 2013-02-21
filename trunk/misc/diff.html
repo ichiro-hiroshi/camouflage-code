@@ -66,7 +66,8 @@ var sed = {
 					[1],
 					[],
 					[2],
-					[]
+					[],
+					[] // dummy
 				]
 		*/
 		for (var i = 0; i < arrSrc.length; i++) {
@@ -77,6 +78,10 @@ var sed = {
 				}
 			}
 		}
+		// dummy
+		this._shortcutNode.push([]);
+		this._sLen = arrSrc.length + 1;
+		this._dLen = arrDst.length + 1;
 	},
 	// (ixs, ixd) より左下方向のショートカット確認
 	shortcutIsExist : function(ixs, ixd) {
@@ -92,6 +97,8 @@ var sed = {
 	},
 	// (ixs1, ixd1) から (ixs2, ixd2) のショートカットを用いない経路配列
 	edgeRoute : function(ixs1, ixd1, ixs2, ixd2) {
+		DP2(ixs1, ixd1, 'edgeRoute (from)');
+		DP2(ixs2, ixd2, 'edgeRoute (to)');
 		var route = [];
 		for (var j = ixd1; j <= ixd2; j++) {
 			route.push({s : ixs1, d : j, c : 1});
@@ -105,14 +112,12 @@ var sed = {
 	shortcutRoute : function(ixs, ixd) {
 		DP2(ixs, ixd, 'shortcutRoute');
 		var route = [{s : ixs, d : ixd, c : 0}];
-		if ((ixs < this._sLen - 1) && (ixd < this._dLen - 1)) {
-			var node = this._shortcutNode[ixs];
-			for (var j = 0; j < node.length; j++) {
-				if (node[j] == ixd) {
-					return route.concat(this.shortcutRoute(ixs + 1, ixd + 1));
-				} else if (node[j] > ixd) {
-					break;
-				}
+		var node = this._shortcutNode[ixs];
+		for (var j = 0; j < node.length; j++) {
+			if (node[j] == ixd) {
+				return route.concat(this.shortcutRoute(ixs + 1, ixd + 1));
+			} else if (node[j] > ixd) {
+				break;
 			}
 		}
 		return route;
@@ -122,14 +127,17 @@ var sed = {
 		DP2(ixs, ixd, 'findRoute2Src');
 		var routes = [];
 		for (var i = ixs; i < this._sLen; i++) {
+			DP2(i, ixd, '>>> searching ' + ixs + '-' + ixd);
 			if (i > ixs) {
 				// s 方向のコスト計算
-				routes[i] = this.edgeRoute(ixs, ixd, i - 1, ixd);
+				routes[i - ixs] = this.edgeRoute(ixs, ixd, i - 1, ixd);
+			} else {
+				routes[i - ixs] = [];
 			}
 			if (this.shortcutIsExist(i, ixd)) {
-				routes[i] = this.findRoute2Dst(i, ixd);
+				routes[i - ixs] = routes[i - ixs].concat(this.findRoute2Dst(i, ixd));
 			} else {
-				routes[i] = this.edgeRoute(i, ixd, this._sLen - 1, this._dLen - 1);
+				routes[i - ixs] = routes[i - ixs].concat(this.edgeRoute(i, ixd, this._sLen - 1, this._dLen - 1));
 				break;
 			}
 		}
@@ -180,8 +188,10 @@ sed.setUp(
 	['a', 'b', 'd', 'a']
 );
 
-DP1(sed.findRoute2Src(0, 0));
-
+var p = sed.findRoute2Src(0, 0);
+for (var i = 0; i < p.length; i++) {
+	document.write('<div>(' + p[i].s + ', ' + p[i].d + ')</div>');
+}
 
 </script>
 
