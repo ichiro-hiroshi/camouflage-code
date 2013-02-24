@@ -13,7 +13,7 @@ d
 aaa
 aa
 </textarea>
-<button onclick='start();'>diff</button>
+<button onclick='diff();'>diff</button>
 <hr />
 <div id='result'></div>
 <script>
@@ -173,7 +173,9 @@ var sed = {
 			return route;
 		}
 	},
-	diff : function(arrSrc, arrDst, route) {
+	diff : function(arrSrc, arrDst) {
+		this.setUp(arrSrc, arrDst);
+		var route = this.findRoute2Src(0, 0);
 		var lines = [];
 		for (var k = 0; k < route.length; k++) {
 			switch (route[k].c) {
@@ -194,35 +196,35 @@ var sed = {
 	}
 };
 
+String.prototype.trim = function() {
+	return this.replace(/^\s+|\s+$/g, '');
+}
+
 function txt2array(txt)
 {
-	return txt.split("\n");
+	return (txt.trim()).split("\n");
 }
 
-function diff(src, dst)
+function diff()
 {
-	var arrSrc = txt2array(src);
-	var arrDst = txt2array(dst);
-	sed.setUp(arrSrc, arrDst);
-	var route = sed.findRoute2Src(0, 0);
-	var lines = sed.diff(arrSrc, arrDst, route);
-	return lines;
-}
-
-function start()
-{
-	var lines = diff(document.getElementById('src').value, document.getElementById('dst').value);
+	var arrSrc = txt2array(document.getElementById('src').value);
+	var arrDst = txt2array(document.getElementById('dst').value);
+	var lines = sed.diff(arrSrc, arrDst);
+	var row = function(diff, src, dst) {
+		return '<tr><td>' + diff + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
+	};
 	var html = '<table>';
 	for (var i = 0; i < lines.length; i++) {
-		switch (lines[i].diff) {
+		var l = lines[i];
+		switch (l.diff) {
 		case '+' :
-			html += '<tr><td>+</td><td></td><td>' + lines[i].data + '</td></tr>';
+			html += row(l.diff, '', l.data);
 			break;
 		case '-' :
-			html += '<tr><td>-</td><td>' + lines[i].data + '</td><td></td></tr>';
+			html += row(l.diff, l.data, '');
 			break;
 		default :
-			html += '<tr><td></td><td>' + lines[i].data + '</td><td>' + lines[i].data + '</td></tr>';
+			html += row('', l.data, l.data);
 			break;
 		}
 	}
