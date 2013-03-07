@@ -1,17 +1,76 @@
 <textarea id='src'>
+a
 aa
-bbb
-c
-d
-dd
-aa
-</textarea>
-<textarea id='dst'>
-aa
-bbb
-d
+aaa
+aaaa
 aaa
 aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+</textarea>
+<textarea id='dst'>
+a
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
+aa
+aaa
+bbbb
+aaa
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
 </textarea>
 <button onclick='diff();'>diff</button>
 <hr />
@@ -109,6 +168,26 @@ var sed = {
 		}
 		return [];
 	},
+	// 始点 (ixs, ixd) から d（右）方向に移動し終点までのコスト計算
+	findRoute2Dst : function(ixs, ixd) {
+		var route = [];
+		for (var j = ixd; j < this._dLen - 1; j++) {
+			var sarr = this.shortcutRoute(ixs, j);
+			if (sarr.length == 0) {
+				route.push({s : ixs, d : j + 1, c : 1});
+			} else {
+				route = route.concat(sarr);
+				var edge = sarr[sarr.length - 1];
+				return route.concat(this.findRoute2Src(edge.s, edge.d));
+			}
+		}
+		// ショートカットなく左端に達した場合
+		if (ixs < this._sLen - 1) {
+			return route.concat(this.edgeRoute(ixs, this._dLen - 1, this._sLen - 1, this._dLen - 1));
+		} else {
+			return route;
+		}
+	},
 	/*
 		始点 (ixs, ixd) から s（下）方向に
 
@@ -153,26 +232,6 @@ var sed = {
 		}
 		return cand[min.ix];
 	},
-	// 始点 (ixs, ixd) から d（右）方向に移動し終点までのコスト計算
-	findRoute2Dst : function(ixs, ixd) {
-		var route = [];
-		for (var j = ixd; j < this._dLen - 1; j++) {
-			var sarr = this.shortcutRoute(ixs, j);
-			if (sarr.length == 0) {
-				route.push({s : ixs, d : j + 1, c : 1});
-			} else {
-				route = route.concat(sarr);
-				var edge = sarr[sarr.length - 1];
-				return route.concat(this.findRoute2Src(edge.s, edge.d));
-			}
-		}
-		// ショートカットなく左端に達した場合
-		if (ixs < this._sLen - 1) {
-			return route.concat(this.edgeRoute(ixs, this._dLen - 1, this._sLen - 1, this._dLen - 1));
-		} else {
-			return route;
-		}
-	},
 	diff : function(arrSrc, arrDst) {
 		this.setUp(arrSrc, arrDst);
 		var route = this.findRoute2Src(0, 0);
@@ -196,24 +255,21 @@ var sed = {
 	}
 };
 
-String.prototype.trim = function() {
-	return this.replace(/^\s+|\s+$/g, '');
-}
-
-function txt2array(txt)
-{
-	return (txt.trim()).split("\n");
+String.prototype.toLines = function() {
+	return this.replace(/^\s+|\s+$/g, '').split("\n");
 }
 
 function diff()
 {
-	var arrSrc = txt2array(document.getElementById('src').value);
-	var arrDst = txt2array(document.getElementById('dst').value);
+	var arrSrc = document.getElementById('src').value.toLines();
+	var arrDst = document.getElementById('dst').value.toLines();
+	var start = +new Date;
 	var lines = sed.diff(arrSrc, arrDst);
+	var html = '<div>time : ' + ((+new Date) - start) + '</div><br />';
 	var row = function(diff, src, dst) {
 		return '<tr><td>' + diff + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
 	};
-	var html = '<table>';
+	html += '<table>';
 	for (var i = 0; i < lines.length; i++) {
 		var l = lines[i];
 		switch (l.diff) {
@@ -232,10 +288,9 @@ function diff()
 	document.getElementById('result').innerHTML = html;
 }
 
-
 </script>
 <style type='text/css'>
 TABLE {border-collapse: collapse;}
 TABLE, TD {border: solid 1px black;}
-TEXTAREA {width: 10%; height: 10em;}
+TEXTAREA {width: 40%; height: 10em;}
 </style>
