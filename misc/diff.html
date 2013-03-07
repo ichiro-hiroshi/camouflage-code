@@ -168,17 +168,29 @@ var sed = {
 		}
 		return [];
 	},
+	isCandidate : function(ixs, ixd) {
+		var N = 5;
+		var f = ixd - ixs;
+		if ((0 < f + N) && (f - N < 0)) {
+			return true;
+		}
+		return false;
+	},
 	// 始点 (ixs, ixd) から d（右）方向に移動し終点までのコスト計算
 	findRoute2Dst : function(ixs, ixd) {
 		var route = [];
 		for (var j = ixd; j < this._dLen - 1; j++) {
-			var sarr = this.shortcutRoute(ixs, j);
-			if (sarr.length == 0) {
-				route.push({s : ixs, d : j + 1, c : 1});
+			if (!this.isCandidate(ixs, j)) {
+				return route.concat(this.edgeRoute(ixs, j, this._sLen - 1, this._dLen - 1));
 			} else {
-				route = route.concat(sarr);
-				var edge = sarr[sarr.length - 1];
-				return route.concat(this.findRoute2Src(edge.s, edge.d));
+				var sarr = this.shortcutRoute(ixs, j);
+				if (sarr.length == 0) {
+					route.push({s : ixs, d : j + 1, c : 1});
+				} else {
+					route = route.concat(sarr);
+					var edge = sarr[sarr.length - 1];
+					return route.concat(this.findRoute2Src(edge.s, edge.d));
+				}
 			}
 		}
 		// ショートカットなく左端に達した場合
@@ -201,6 +213,9 @@ var sed = {
 	findRoute2Src : function(ixs, ixd) {
 		var cand = [];
 		for (var i = ixs; i < this._sLen; i++) {
+			if (!this.isCandidate(i, ixd)) {
+				break;
+			}
 			var ix = i - ixs;
 			if (i == ixs) {
 				cand[ix] = [];
@@ -230,7 +245,11 @@ var sed = {
 				min.ix = k;
 			}
 		}
-		return cand[min.ix];
+		if (min.ix >= 0) {
+			return cand[min.ix];
+		} else {
+			return [];
+		}
 	},
 	diff : function(arrSrc, arrDst) {
 		this.setUp(arrSrc, arrDst);
