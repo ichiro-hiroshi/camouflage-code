@@ -1,0 +1,351 @@
+<textarea id='src'>
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+</textarea>
+<textarea id='dst'>
+a
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
+aa
+aaa
+bbbb
+aaa
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
+</textarea>
+<button onclick='diff();'>diff</button>
+<hr />
+<div id='result'></div>
+<script>
+
+var sed = {
+	_sLen : -1,
+	_dLen : -1,
+	_shortcutNode : [],
+	setUp : function(arrSrc, arrDst) {
+		/*
+			arrSrc : [a, b, c, d, e]
+			arrDst : [a, b, d, a]
+
+			   0:- 1:a 2:b 3:d 4:a
+			0:-┌─┬─┬─┬─┐
+			   │＼│  │  │＼│
+			1:a├─┼─┼─┼─┤
+			   │  │＼│  │  │
+			2:b├─┼─┼─┼─┤
+			   │  │  │  │  │
+			3:c├─┼─┼─┼─┤
+			   │  │  │＼│  │
+			4:d├─┼─┼─┼─┤
+			   │  │  │  │  │
+			5:e└─┴─┴─┴─┘
+
+			in this case, shortcut :
+
+				(0, 0) --> (1, 1)
+				(0, 3) --> (1, 4)
+				(1, 1) --> (2, 2)
+				(3, 2) --> (4, 3)
+
+			in this case,
+
+				this._sLen : 6
+				this._dLen : 5
+				this._shortcutNode : [
+					[0, 3],
+					[1],
+					[],
+					[2],
+					[],
+					[] // dummy
+				]
+		*/
+		for (var i = 0; i < arrSrc.length; i++) {
+			this._shortcutNode[i] = [];
+			for (var j = 0; j < arrDst.length; j++) {
+				if (arrSrc[i] == arrDst[j]) {
+					this._shortcutNode[i].push(j);
+				}
+			}
+		}
+		this._shortcutNode.push([]);
+		this._sLen = arrSrc.length + 1;
+		this._dLen = arrDst.length + 1;
+	},
+	// (ixs, ixd) はショートカットか
+	shortcutNodeIsExists : function(ixs, ixd) {
+		var node = this._shortcutNode[ixs];
+		for (var j = 0; j < node.length; j++) {
+			if (node[j] == ixd) {
+				return true;
+			} else if (node[j] > ixd) {
+				return false;
+			}
+		}
+		return false;
+	},
+	// 始点 (ixs, ixd) から limitStep 以内で到達可能な全ショートカットを返す
+	findShortcuts : function(ixs, ixd, limitStep) {
+		/*
+			// 対象となるショートカットの配列
+			return [{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			...
+			}];
+		*/
+		var ret = [];
+		var slen = Math.min(this._sLen, ixs + limitStep);
+		for (var i = ixs; i < slen; i++) {
+			var node = this._shortcutNode[i];
+			for (var j = 0; j < node.length; j++) {
+				if ((ixd <= node[j]) && (node[j] <= ixd + limitStep)) {
+					// (i, node[j]) を起点に連続するショートカット数をカウント
+					var n = 1;
+					while (this.shortcutNodeIsExists(i + n, node[j] + n)) {
+						n++;
+					}
+					var c = (i - ixs) + (node[j] - ixd);
+					ret.push({
+						s : i,			// src 軸添字
+						d : node[j],	// dst 軸添字
+						c : c,			// (ixs, ixd) からの移動コスト
+						n : n			// 連続したショートカットの数
+					});
+				}
+			}
+		}
+		return ret;
+	},
+	// 配列 route のコスト
+	routeCost : function(route) {
+		var cost = 0;
+		for (var ix = 0; ix < route.length; ix++) {
+			cost += route[ix].c;
+		}
+		return cost;
+	},
+	// 始点 (ixs, ixd) から終点まで最大 limitStep 以内で到達可能なルートを探す
+	findRoute : function(ixs, ixd, limitStep) {
+		/*
+			// ルート順のショートカットの配列
+			return [{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// 前番のショートカット終端からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			...
+			}];
+		*/
+		var n = {
+			s : this._sLen - ixs - 1,
+			d : this._dLen - ixd - 1
+		};
+		var minStep = Math.max(n.s, n.d) - Math.min(n.s, n.d);
+		var maxStep = n.s + n.d;
+		for (var step = minStep; step < limitStep + 1; step++) {
+			var shortcuts = this.findShortcuts(ixs, ixd, step);
+			if (shortcuts.length > 0) {
+				var cands = [];
+				for (var ix = 0; ix < shortcuts.length; ix++) {
+					// shortcuts[ix] までの距離を step から減じ shortcuts[ix] の終端から findRoute 再帰
+					var sc = shortcuts[ix];
+					if ((sc.s + sc.n == this._sLen - 1) && (sc.d + sc.n == this._dLen - 1)) {
+						// ショートカットが右下まで到達するケース
+						cands.push([sc]);
+					} else {
+						var cand = this.findRoute((sc.s + sc.n), (sc.d + sc.n), (step - sc.c));
+						if (cand) {
+							cands.push(([sc]).concat(cand));
+						}
+					}
+				}
+				if (cands.length > 0) {
+					// 最小コストの route を戻す
+					var min = {cost : Number.MAX_VALUE, ix : -1};
+					for (var ix = 0; ix < cands.length; ix++) {
+						var cost = this.routeCost(cands[ix]);
+						if (cost > min.cost) {
+							continue;
+						}
+						min = {cost : cost, ix : ix};
+					}
+					return cands[min.ix];
+				}
+			} else if (maxStep <= step) {
+				return [{
+					s : this._sLen - 1,	// src 軸添字
+					d : this._dLen - 1,	// dst 軸添字
+					c : maxStep,		// (ixs, ixd) からの移動コスト
+					n : 0				// 連続したショートカットの数
+				}];
+			}
+		}
+		return null;
+	},
+	diff : function(arrSrc, arrDst) {
+		this.setUp(arrSrc, arrDst);
+		var route = this.findRoute(0, 0, (this._sLen - 1 + this._dLen - 1));
+		// DP(route);
+		var lines = [];
+		var cur = {
+			s : 0,
+			d : 0
+		};
+		for (var k = 0; k < route.length; k++) {
+			// cur から route[k] への移動
+			var r = route[k];
+			for (var i = cur.s; i <= r.s + r.n; i++) {
+				if (i > r.s) {
+					lines.push({data : arrSrc[i - 1], diff : null});
+				} else {
+					lines.push({data : arrSrc[i - 1], diff : '-'});
+				}
+			}
+			for (var j = cur.d; j <= r.d; j++) {
+				lines.push({data : arrDst[j - 1], diff : '+'});
+			}
+			// cur を終端点まで進める
+			cur = {
+				s : r.s + r.n,
+				d : r.d + r.n
+			};
+		}
+		return lines;
+	}
+};
+
+function DP(in_data)
+{
+	if (!console) {
+		return;
+	}
+	var _inspect = function(in_obj, in_indent) {
+		for (var prop in in_obj) {
+			var child = false;
+			if ((typeof(in_obj[prop]) == 'object') && (in_obj[prop])) {
+				child = true;
+			}
+			console.log(in_indent + prop + ' : ' + in_obj[prop]);
+			if (child) {
+				_inspect(in_obj[prop], in_indent + '  ');
+			}
+		}
+	};
+	_inspect({DP : in_data}, '');
+}
+
+String.prototype.toLines = function() {
+	return this.replace(/^\s+|\s+$/g, '').split("\n");
+}
+
+function diff()
+{
+	var arrSrc = document.getElementById('src').value.toLines();
+	var arrDst = document.getElementById('dst').value.toLines();
+	var start = +new Date;
+	var lines = sed.diff(arrSrc, arrDst);
+	var html = '<div>time : ' + ((+new Date) - start) + '</div><br />';
+	var row = function(diff, src, dst) {
+		return '<tr><td>' + diff + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
+	};
+	html += '<table>';
+	for (var i = 0; i < lines.length; i++) {
+		var l = lines[i];
+		switch (l.diff) {
+		case '+' :
+			html += row(l.diff, '', l.data);
+			break;
+		case '-' :
+			html += row(l.diff, l.data, '');
+			break;
+		default :
+			html += row('', l.data, l.data);
+			break;
+		}
+	}
+	html += '</table>';
+	document.getElementById('result').innerHTML = html;
+}
+
+</script>
+<style type='text/css'>
+TABLE {border-collapse: collapse;}
+TABLE, TD {border: solid 1px black;}
+TEXTAREA {width: 40%; height: 10em;}
+</style>
