@@ -285,21 +285,26 @@ function diff()
 	var start = +new Date;
 	var lines = sed.diff(arrSrc, arrDst);
 	var html = '<div>time : ' + ((+new Date) - start) + '</div><br />';
-	var row = function(diff, src, dst) {
-		return '<tr><td>' + diff + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
+	var row = function(diff, src, dst, no, cls) {
+		return '<tr class="' + cls + '"><td>' + diff + '</td><td>' + no + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
 	};
 	html += '<table>';
+	cnt = {
+		p : 0,
+		m : 0,
+		s : 0
+	};
 	for (var i = 0; i < lines.length; i++) {
 		var l = lines[i];
 		switch (l.diff) {
 		case '+' :
-			html += row(l.diff, '', l.data);
+			html += row(l.diff, '', l.data, ++cnt.p, 'cP');
 			break;
 		case '-' :
-			html += row(l.diff, l.data, '');
+			html += row(l.diff, l.data, '', ++cnt.m, 'cM');
 			break;
 		default :
-			html += row('', l.data, l.data);
+			html += row('', l.data, l.data, ++cnt.s, 'cS');
 			break;
 		}
 	}
@@ -309,6 +314,9 @@ function diff()
 
 </script>
 <style type='text/css'>
+.cP {background-color: #ccffcc;}
+.cM {background-color: #ffcccc;}
+.cS {background-color: #ccccff;}
 TABLE {border-collapse: collapse;}
 TABLE, TD {border: solid 1px black;}
 TEXTAREA {width: 40%; height: 10em;}
