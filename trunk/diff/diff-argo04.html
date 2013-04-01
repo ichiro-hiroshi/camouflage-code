@@ -1,0 +1,362 @@
+<textarea id='src'>
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+aa
+aaa
+aaaa
+aaa
+aa
+a
+</textarea>
+<textarea id='dst'>
+a
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+aa
+aaab
+aaaab
+aaab
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
+aa
+aaa
+bbbb
+aaa
+aa
+ab
+aab
+aaa
+aaaa
+aaa
+aab
+ab
+a
+</textarea>
+<button onclick='diff();'>diff</button>
+<hr />
+<div id='result'></div>
+<script>
+
+var sed = {
+	_sLen : -1,
+	_dLen : -1,
+	_shortcutNodes : {
+		f : [],
+		l : {}
+	},
+	_shortcutCache : [],
+	setUp : function(arrSrc, arrDst) {
+		/*
+			arrSrc : [a, b, c, d, e]
+			arrDst : [a, b, d, a]
+
+			   0:- 1:a 2:b 3:d 4:a
+			0:-┌─┬─┬─┬─┐
+			   │＼│  │  │＼│
+			1:a├─┼─┼─┼─┤
+			   │  │＼│  │  │
+			2:b├─┼─┼─┼─┤
+			   │  │  │  │  │
+			3:c├─┼─┼─┼─┤
+			   │  │  │＼│  │
+			4:d├─┼─┼─┼─┤
+			   │  │  │  │  │
+			5:e└─┴─┴─┴─┘
+
+			in this case, shortcut :
+
+				(0, 0) --> (1, 1)
+				(0, 3) --> (1, 4)
+				(1, 1) --> (2, 2)
+				(3, 2) --> (4, 3)
+
+			in this case,
+
+				this._sLen : 6
+				this._dLen : 5
+				this._shortcutNodes : [
+					[0, 3],
+					[1],
+					[],
+					[2],
+					[],
+					[] // dummy
+				]
+		*/
+		var sn = this._shortcutNodes;
+		for (var i = 0; i < arrSrc.length; i++) {
+			for (var j = 0; j < arrDst.length; j++) {
+				if (arrSrc[i] == arrDst[j]) {
+					sn.l[i + '_' + j] = true;
+					var distance = i + j;
+					if (!sn.f[distance]) {
+						sn.f[distance] = [];
+					}
+					sn.f[distance].push({s : i, d : j});
+				}
+			}
+		}
+		this._sLen = arrSrc.length + 1;
+		this._dLen = arrDst.length + 1;
+	},
+	// 始点 (ixs, ixd) から step で到達する全ショートカットを返す
+	findShortcuts : function(ixs, ixd, step) {
+		/*
+			// 対象となるショートカットの配列
+			return [{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			...
+			}];
+		*/
+		var ret = [];
+		var cand = this._shortcutNodes.f[step + ixs + ixd];
+		if (!cand) {
+			return ret;
+		}
+		for (var k = 0; k < cand.length; k++) {
+			if (cand[k].s < ixs) {
+				continue;
+			}
+			if (cand[k].d < ixd) {
+				break;
+			}
+			// (cand[k].s, cand[k].d) 起点の連続するショートカット数
+			var n = 1;
+			while (this._shortcutNodes.l[(cand[k].s + n) + '_' + (cand[k].d + n)]) {
+				n++;
+			}
+			ret.push({
+				s : cand[k].s,	// src 軸添字
+				d : cand[k].d,	// dst 軸添字
+				c : step,		// (ixs, ixd) からの移動コスト
+				n : n			// 連続したショートカットの数
+			});
+		}
+		return ret;
+	},
+	findShortcutsCache : function(ixs, ixd, limitStep) {
+		var cache = this._shortcutCache;
+		if (cache[ixs]) {
+			if (cache[ixs][ixd]) {
+				if (cache[ixs][ixd][limitStep]) {
+					return cache[ixs][ixd][limitStep];
+				} else {
+					cache[ixs][ixd][limitStep] = [];
+				}
+			} else {
+				cache[ixs][ixd] = [];
+				cache[ixs][ixd][limitStep] = [];
+			}
+		} else {
+			cache[ixs] = [];
+			cache[ixs][ixd] = [];
+			cache[ixs][ixd][limitStep] = [];
+		}
+		var ret = [];
+		for (var k = 0; k <= limitStep; k++) {
+			ret = ret.concat(this.findShortcuts(ixs, ixd, k));
+		}
+		cache[ixs][ixd][limitStep] = ret;
+		return ret;
+	},
+	// 配列 route のコスト
+	routeCost : function(route) {
+		var cost = 0;
+		for (var k = 0; k < route.length; k++) {
+			cost += route[k].c;
+		}
+		return cost;
+	},
+	// 始点 (ixs, ixd) から終点まで最大 limitStep 以内で到達可能なルートを探す
+	findRoute : function(ixs, ixd, limitStep) {
+		/*
+			// ルート順のショートカットの配列
+			return [{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// (ixs, ixd) からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			{
+				s : 99,	// src 軸添字
+				d : 99,	// dst 軸添字
+				c : 99,	// 前番のショートカット終端からの移動コスト
+				n : 99	// 連続したショートカットの数
+			},
+			...
+			}];
+		*/
+		var rect = {
+			s : this._sLen - ixs - 1,
+			d : this._dLen - ixd - 1
+		};
+		var minStep = Math.abs(rect.s - rect.d);
+		var maxStep = rect.s + rect.d;
+		for (var step = minStep; step <= maxStep; step++) {
+			if (step > limitStep) {
+				// limitStep を超えた
+				return null;
+			}
+			var shortcuts = this.findShortcutsCache(ixs, ixd, step);
+			if (shortcuts.length == 0) {
+				// step ではショートカットに到達できない
+				continue;
+			}
+			var min = {cost : Number.MAX_VALUE, route : null};
+			for (var k = 0; k < shortcuts.length; k++) {
+				var sc = shortcuts[k];
+				if ((sc.s + sc.n == this._sLen - 1) && (sc.d + sc.n == this._dLen - 1)) {
+					// ショートカットが右下終端点に到達するケース
+					var route = [sc];
+				} else {
+					// shortcuts[k] までの距離を step から減じ shortcuts[k] の終端から findRoute 再帰
+					var next = this.findRoute((sc.s + sc.n), (sc.d + sc.n), (step - sc.c));
+					if (!next) {
+						continue;
+					}
+					var route = ([sc]).concat(next);
+				}
+				var cost = this.routeCost(route);
+				if (cost < min.cost) {
+					min = {cost : cost, route : route};
+				}
+			}
+			if (min.route) {
+				return min.route;
+			}
+		}
+		// limitStep 以内だがショートカット無し
+		return [{
+			s : this._sLen - 1,	// src 軸添字
+			d : this._dLen - 1,	// dst 軸添字
+			c : maxStep,		// (ixs, ixd) からの移動コスト
+			n : 0				// 連続したショートカットの数
+		}];
+	},
+	diff : function(arrSrc, arrDst) {
+		this.setUp(arrSrc, arrDst);
+		var route = this.findRoute(0, 0, (this._sLen - 1 + this._dLen - 1));
+		var lines = [];
+		var cur = {
+			s : 0,
+			d : 0
+		};
+		for (var k = 0; k < route.length; k++) {
+			// cur から route[k] への移動
+			var ro = route[k];
+			for (var i = cur.s; i < ro.s; i++) {
+				lines.push({data : arrSrc[i], diff : '-'});
+			}
+			for (var j = cur.d; j < ro.d; j++) {
+				lines.push({data : arrDst[j], diff : '+'});
+			}
+			for (var i = ro.s; i < ro.s + ro.n; i++) {
+				lines.push({data : arrSrc[i], diff : null});
+			}
+			// cur を終端点まで進める
+			cur = {
+				s : ro.s + ro.n,
+				d : ro.d + ro.n
+			};
+		}
+		return lines;
+	}
+};
+
+String.prototype.toLines = function() {
+	return this.replace(/^\s+|\s+$/g, '').split("\n");
+}
+
+function diff()
+{
+	var arrSrc = document.getElementById('src').value.toLines();
+	var arrDst = document.getElementById('dst').value.toLines();
+	var start = +new Date;
+	var lines = sed.diff(arrSrc, arrDst);
+	var html = '<div>time : ' + ((+new Date) - start) + '</div><br />';
+	var row = function(diff, src, dst, no, cls) {
+		return '<tr class="' + cls + '"><td>' + diff + '</td><td>' + no + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
+	};
+	html += '<table>';
+	cnt = {
+		p : 0,
+		m : 0,
+		s : 0
+	};
+	for (var i = 0; i < lines.length; i++) {
+		var l = lines[i];
+		switch (l.diff) {
+		case '+' :
+			html += row(l.diff, '', l.data, ++cnt.p, 'cP');
+			break;
+		case '-' :
+			html += row(l.diff, l.data, '', ++cnt.m, 'cM');
+			break;
+		default :
+			html += row('', l.data, l.data, ++cnt.s, 'cS');
+			break;
+		}
+	}
+	html += '</table>';
+	document.getElementById('result').innerHTML = html;
+}
+
+</script>
+<style type='text/css'>
+.cP {background-color: #ccffcc;}
+.cM {background-color: #ffcccc;}
+.cS {background-color: #ccccff;}
+TABLE {border-collapse: collapse;}
+TABLE, TD {border: solid 1px black;}
+TEXTAREA {width: 40%; height: 10em;}
+</style>
