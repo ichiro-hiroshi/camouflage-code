@@ -1,0 +1,265 @@
+<textarea id='src'>
+2
+2
+3
+4
+5
+</textarea>
+<textarea id='dst'>
+1
+2
+o
+4
+5
+</textarea>
+<button onclick='diff();'>diff</button>
+<hr />
+<div id='result'></div>
+<script>
+
+var sed = {
+	_sLen : -1,
+	_dLen : -1,
+	_shortcutNodes : {},
+	setUp : function(arrSrc, arrDst) {
+		this._shortcutNodes = {
+			distr : [],
+			exist : {}
+		};
+		/*
+			arrSrc : [a, b, c, d, e]
+			arrDst : [a, b, d, a]
+
+			   0:- 1:a 2:b 3:d 4:a
+			0:-	+---+---+---+---+
+				|*  |   |   |*  |
+				| * |   |   | * |
+				|  *|   |   |  *|
+			1:a	+---+---+---+---+
+				|   |*  |   |   |
+				|   | * |   |   |
+				|   |  *|   |   |
+			2:b	+---+---+---+---+
+				|*  |   |   |   |
+				| * |   |   |   |
+				|  *|   |   |   |
+			3:c	+---+---+---+---+
+				|   |   |*  |   |
+				|   |   | * |   |
+				|   |   |  *|   |
+			4:d	+---+---+---+---+
+				|   |   |   |   |
+				|   |   |   |   |
+				|   |   |   |   |
+			5:e	+---+---+---+---+
+
+			in this case, shortcut :
+				(0, 0) --> (1, 1)
+				(0, 3) --> (1, 4)
+				(1, 1) --> (2, 2)
+				(3, 2) --> (4, 3)
+
+			in this case,
+				this._sLen : 6
+				this._dLen : 5
+
+		*/
+		var sn = this._shortcutNodes;
+		for (var i = 0; i < arrSrc.length; i++) {
+			for (var j = 0; j < arrDst.length; j++) {
+				if (arrSrc[i] == arrDst[j]) {
+					sn.exist[i + '_' + j] = true;
+					var offset = i + j;
+					if (!sn.distr[offset]) {
+						sn.distr[offset] = [];
+					}
+					sn.distr[offset].push({s : i, d : j});
+				}
+			}
+		}
+		this._sLen = arrSrc.length + 1;
+		this._dLen = arrDst.length + 1;
+	},
+	findAllSCOnStep : function(ixs, ixd, step) {
+		/*
+			// all shortcuts
+			return [{
+				s1 : 99,	// src index
+				d1 : 99,	// dst index
+				n1 : 99		// shortcuts from (s1, d1)
+			},
+			{
+				s2 : 99,	// src index
+				d2 : 99,	// dst index
+				n2 : 99		// continus-count of shortcuts from (s2, d2)
+			},
+			...
+			}];
+		*/
+		var ret = [];
+		var cand = this._shortcutNodes.distr[step + ixs + ixd];
+		if (!cand) {
+			return ret;
+		}
+		for (var k = 0; k < cand.length; k++) {
+			if (cand[k].s < ixs) {
+				continue;
+			}
+			if (cand[k].d < ixd) {
+				break;
+			}
+			// continus-count of shortcuts from (cand[k].s, cand[k].d)
+			var n = 1;
+			while (this._shortcutNodes.exist[(cand[k].s + n) + '_' + (cand[k].d + n)]) {
+				n++;
+			}
+			ret.push({
+				s : cand[k].s,
+				d : cand[k].d,
+				n : n
+			});
+		}
+		return ret;
+	},
+	// nearest > continus-count > next-chance
+	findBetterShortcut : function(ixs, ixd) {
+		var rect = {
+			s : this._sLen - ixs - 1,
+			d : this._dLen - ixd - 1
+		};
+		var maxStep = rect.s + rect.d;
+		var sIsLong = rect.s > rect.d;
+		for (var k = 0; k <= maxStep; k++) {
+			var cands = this.findAllSCOnStep(ixs, ixd, k);
+			if (cands.length > 0) {
+				// nearest
+				break;
+			}
+		}
+		if (cands.length == 0) {
+			return null;
+		}
+		// continus-count
+		var max = 0;
+		var same = [];
+		for (var k = 0; k < cands.length; k++) {
+			if (cands[k].n > max) {
+				max = cands[k].n;
+				same = [cands[k]];
+			} else if (cands[k].n == max) {
+				same.push(cands[k]);
+			}
+		}
+		// next-chance
+		if (sIsLong) {
+			return same[same.length - 1];
+		} else {
+			return same[0];
+		}
+	},
+	findRoute : function(ixs, ixd) {
+		var next = {
+			s : ixs,
+			d : ixd
+		};
+		var ret = [];
+		do {
+			var sc = this.findBetterShortcut(next.s, next.d);
+			if (sc) {
+				ret.push(sc);
+				next = {
+					s : sc.s + sc.n,
+					d : sc.d + sc.n
+				};
+			} else {
+				break;
+			}
+			var notBEdge = (next.s < this._sLen - 1);
+			var notREdge = (next.d < this._dLen - 1);
+		} while (notBEdge && notREdge);
+		if (notBEdge || notREdge) {
+			ret.push({
+				s : this._sLen - 1,
+				d : this._dLen - 1,
+				n : 0
+			});
+		}
+		return ret;
+	},
+	diff : function(arrSrc, arrDst) {
+		this.setUp(arrSrc, arrDst);
+		var route = this.findRoute(0, 0);
+		var lines = [];
+		var cur = {
+			s : 0,
+			d : 0
+		};
+		for (var k = 0; k < route.length; k++) {
+			// from cur to route[k]
+			var ro = route[k];
+			for (var i = cur.s; i < ro.s; i++) {
+				lines.push({data : arrSrc[i], diff : '-'});
+			}
+			for (var j = cur.d; j < ro.d; j++) {
+				lines.push({data : arrDst[j], diff : '+'});
+			}
+			for (var i = ro.s; i < ro.s + ro.n; i++) {
+				lines.push({data : arrSrc[i], diff : null});
+			}
+			// update cur
+			cur = {
+				s : ro.s + ro.n,
+				d : ro.d + ro.n
+			};
+		}
+		return lines;
+	}
+};
+
+String.prototype.toLines = function() {
+	return this.replace(/^\s+|\s+$/g, '').split("\n");
+}
+
+function diff()
+{
+	var arrSrc = document.getElementById('src').value.toLines();
+	var arrDst = document.getElementById('dst').value.toLines();
+	var start = +new Date;
+	var lines = sed.diff(arrSrc, arrDst);
+	var html = '<div>time : ' + ((+new Date) - start) + '</div><br />';
+	var row = function(diff, src, dst, no, cls) {
+		return '<tr class="' + cls + '"><td>' + diff + '</td><td>' + no + '</td><td>' + src + '</td><td>' + dst + '</td></tr>';
+	};
+	html += '<table>';
+	cnt = {
+		p : 0,
+		m : 0,
+		s : 0
+	};
+	for (var i = 0; i < lines.length; i++) {
+		var l = lines[i];
+		switch (l.diff) {
+		case '+' :
+			html += row(l.diff, '', l.data, ++cnt.p, 'cP');
+			break;
+		case '-' :
+			html += row(l.diff, l.data, '', ++cnt.m, 'cM');
+			break;
+		default :
+			html += row('', l.data, l.data, ++cnt.s, 'cS');
+			break;
+		}
+	}
+	html += '</table>';
+	document.getElementById('result').innerHTML = html;
+}
+
+</script>
+<style type='text/css'>
+.cP {background-color: #ccffcc;}
+.cM {background-color: #ffcccc;}
+.cS {background-color: #ccccff;}
+TABLE {border-collapse: collapse;}
+TABLE, TD {border: solid 1px black;}
+TEXTAREA {width: 40%; height: 10em;}
+</style>
