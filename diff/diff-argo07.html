@@ -1,62 +1,26 @@
 <textarea id='src'>
-1
-2
-3
-4
-5
-6
-7
-8
-9
 0
 1
 2
 3
-4
-5
-6
++
++
++
 7
 8
 9
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
-0
 </textarea>
 <textarea id='dst'>
+0
 1
 2
 3
-4
+9
 5
 6
 7
 8
 9
-0
-1
-2
-3
-4
-0
-1
-5*
-2
-3
-4
-5
-6
-7
-8
-9
-0
 </textarea>
 <button onclick='diff();'>diff</button>
 <hr />
@@ -64,7 +28,7 @@
 <script>
 
 var sed = {
-	_threshold : 10,
+	_threshold : 1,
 	_sLen : -1,
 	_dLen : -1,
 	_shortcutNodes : {},
@@ -133,12 +97,12 @@ var sed = {
 			return [{
 				s1 : 99,	// src index
 				d1 : 99,	// dst index
-				n1 : 99		// continuous-count of shortcuts from (s1, d1)
+				n1 : 99		// repeat-count of shortcuts from (s1, d1)
 			},
 			{
 				s2 : 99,	// src index
 				d2 : 99,	// dst index
-				n2 : 99		// continuous-count of shortcuts from (s2, d2)
+				n2 : 99		// repeat-count of shortcuts from (s2, d2)
 			},
 			...
 			}];
@@ -155,7 +119,7 @@ var sed = {
 			if (cand[k].d < ixd) {
 				break;
 			}
-			// continuous-count of shortcuts from (cand[k].s, cand[k].d)
+			// repeat-count of shortcuts from (cand[k].s, cand[k].d)
 			var n = 1;
 			while (this._shortcutNodes.exist[(cand[k].s + n) + '_' + (cand[k].d + n)]) {
 				n++;
@@ -171,7 +135,7 @@ var sed = {
 		}
 		return ret;
 	},
-	// nearest --> continuous-count --> next-chance
+	// nearest --> repeat-count --> next-chance
 	findOptimizedSC : function(ixs, ixd, min_continus_cnt) {
 		var rect = {
 			s : this._sLen - ixs - 1,
@@ -191,7 +155,7 @@ var sed = {
 		} else {
 			var save = k;
 		}
-		// continuous-count
+		// repeat-count
 		var max = 0;
 		var same = [];
 		for (var k = 0; k < cands.length; k++) {
@@ -226,11 +190,13 @@ var sed = {
 			s : ixs,
 			d : ixd
 		};
-		var ret = [];
+		var route = [];
+		var score = 0;
 		do {
 			var sc = this.findOptimizedSC(next.s, next.d, 1);
 			if (sc) {
-				ret.push(sc);
+				score += sc.n;
+				route.push(sc);
 				next = {
 					s : sc.s + sc.n,
 					d : sc.d + sc.n
@@ -242,17 +208,30 @@ var sed = {
 			var notREdge = (next.d < this._dLen - 1);
 		} while (notBEdge && notREdge);
 		if (notBEdge || notREdge) {
-			ret.push({
+			route.push({
 				s : this._sLen - 1,
 				d : this._dLen - 1,
 				n : 0
 			});
 		}
-		return ret;
+		return {
+			score : score,
+			route : route
+		};
 	},
 	diff : function(arrSrc, arrDst) {
 		this.setUp(arrSrc, arrDst);
-		var route = this.findRoute(0, 0);
+		var route;
+		var max_score = 0;
+		for (var i = 1; i < 20; i = i * 2) {
+			this._threshold = i;
+			var found = this.findRoute(0, 0);
+			console.log('try [' + this._threshold + '] : ' + found.score);
+			if (found.score > max_score) {
+				max_score = found.score;
+				route = found.route;
+			}
+		}
 		var lines = [];
 		var cur = {
 			s : 0,
