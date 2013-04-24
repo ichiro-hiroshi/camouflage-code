@@ -15,7 +15,7 @@ $typedb = array(
 	),
 	'img' => array(
 		'contentType' => 'image/gif',
-		'entityInitiator' => '<img src="_SRC_" />',
+		'entityInitiator' => '<img src="_SRC_" onload="console.log(Math.random())" />',
 		'entity' => call_user_func(function() {
 			$dat = array(
 				0x47,0x49,0x46,0x38,0x39,0x61,0x01,0x00,
@@ -43,7 +43,7 @@ $headerdb = array(
 
 $self = substr(str_replace(__DIR__, '', __FILE__), 1);
 $type = array_key_exists('type', $_GET) ? $_GET['type'] : 'html';
-$mode = array_key_exists('mode', $_GET) ? $_GET['mode'] : 'scriptInitiator';
+$mode = array_key_exists('mode', $_GET) ? $_GET['mode'] : 'xentityInitiator';
 $test = array_key_exists('test', $_GET) ? intval($_GET['test']) : 0;
 $ctxt = $typedb[$type];
 $next = "{$self}?type={$type}&test={$test}";
@@ -53,6 +53,32 @@ function putlog($txt)
 	$h = fopen('log.txt', 'a+');
 	fwrite($h, date(DATE_RFC822) . " [{$txt}]\n");
 	fclose($h);
+}
+
+function testIndex()
+{
+	global $self, $typedb, $headerdb;
+	$via = array(
+		'direct' => 'entityInitiator',
+		'script' => 'scriptInitiator'
+	);
+	print "<ul>\n";
+	foreach ($typedb as $k1 => $v1) {
+		print "\t<li>{$k1}\n";
+		print "\t<ul>\n";
+		foreach ($via as $k2 => $v2) {
+			print "\t\t<li>{$k2}\n";
+			print "\t\t<ul>\n";
+			for ($i = 0; $i < count($headerdb); $i++) {
+				print "\t\t\t<li><a href='{$self}?type={$k1}&test={$i}&mode={$v2}'>{$headerdb[$i]}</a></li>\n";
+			}
+			print "\t\t</ul>\n";
+			print "\t\t</li>\n";
+		}
+		print "\t</ul>\n";
+		print "\t</li>\n";
+	}
+	print "</ul>\n";
 }
 
 switch ($mode) {
@@ -77,6 +103,8 @@ case 'entity' :
 	print $ctxt['entity'];
 	break;
 default :
+	header("Content-Type: text/html");
+	testIndex();
 	break;
 }
 
