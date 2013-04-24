@@ -43,7 +43,7 @@ $headerdb = array(
 
 $self = substr(str_replace(__DIR__, '', __FILE__), 1);
 $type = array_key_exists('type', $_GET) ? $_GET['type'] : 'html';
-$mode = array_key_exists('mode', $_GET) ? $_GET['mode'] : 'xentityInitiator';
+$mode = array_key_exists('mode', $_GET) ? $_GET['mode'] : NULL;
 $test = array_key_exists('test', $_GET) ? intval($_GET['test']) : 0;
 $ctxt = $typedb[$type];
 $next = "{$self}?type={$type}&test={$test}";
@@ -83,14 +83,48 @@ function testIndex()
 
 switch ($mode) {
 case 'entityInitiator' :
-	header("Content-Type: text/html");
-	print str_replace('_SRC_', "{$next}&mode=entity", "{$ctxt['entityInitiator']}\n");
-	print "<hr /><a href='log.txt'>[log.txt]</a>";
-	break;
 case 'scriptInitiator' :
 	header("Content-Type: text/html");
-	print "<script type='text/javascript' src='{$next}&mode=script'></script>";
-	print "<hr /><a href='log.txt'>[log.txt]</a>";
+	print "<div id='viewLog'></div>";
+	if ($mode == 'entityInitiator') {
+		print str_replace('_SRC_', "{$next}&mode=entity", "{$ctxt['entityInitiator']}\n");
+	} else {
+		print "<script type='text/javascript' src='{$next}&mode=script'></script>";
+	}
+	print <<<EOC
+<style type='text/css'>
+#viewLog {
+	width: 80%;
+	color: white;
+	background-color: black;
+	padding: 3px;
+}
+</style>
+<script type='text/javascript'>
+window.setTimeout(function() {
+	var xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = (function(self) {
+		return function() {
+			if ((self.readyState == 4) && (self.status == 200)) {
+				var div = document.getElementById('viewLog');
+				var lines = self.responseText.split("\\n");
+				for (var i = lines.length - 1; i >= 0; i--) {
+					if (lines[i]) {
+						break;
+					}
+				}
+				div.appendChild(document.createTextNode(lines[i]));
+			}
+		};
+	})(xhr);
+	xhr.open('GET', 'log.txt', true);
+	xhr.send();
+}, 1000);
+</script>
+</style>
+<hr />
+<a href='../'>[../]</a>
+EOC;
 	break;
 case 'script' :
 	header("Content-Type: text/javascript");
