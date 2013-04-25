@@ -105,25 +105,30 @@ window.setTimeout(function() {
 	var xhr = new XMLHttpRequest();
 	xhr.onreadystatechange = (function(self) {
 		return function() {
-			if ((self.readyState == 4) && (self.status == 200)) {
-				var div = document.getElementById('viewLog');
-				var lines = self.responseText.split("\\n");
-				for (var i = lines.length - 1; i >= 0; i--) {
-					if (lines[i]) {
-						break;
-					}
-				}
-				div.appendChild(document.createTextNode(lines[i]));
+			if ((self.readyState != 4) || (self.status != 200)) {
+				return;
 			}
+			var div = document.getElementById('viewLog');
+			var lines = self.responseText.split("\\n");
+			var cnt = 0;
+			var last = null;
+			for (var i = 0; i < lines.length; i++) {
+				if (lines[i]) {
+					cnt++;
+					last = lines[i];
+				}
+			}
+			div.appendChild(document.createTextNode(cnt + ' : ' + last));
 		};
 	})(xhr);
 	xhr.open('GET', 'log.txt', true);
 	xhr.send();
-}, 1000);
+}, 500);
 </script>
 </style>
 <hr />
 <a href='../'>[../]</a>
+<a href='{$self}'>[index]</a>
 EOC;
 	break;
 case 'script' :
