@@ -50,8 +50,14 @@ $next = "{$self}?type={$type}&test={$test}";
 
 function putlog($txt)
 {
+	$headers = apache_request_headers();
 	$h = fopen('log.txt', 'a+');
-	fwrite($h, date(DATE_RFC822) . " [{$txt}]\n");
+	if (isset($headers['If-Modified-Since'])) {
+		$add = " + {$headers['If-Modified-Since']}";
+	} else {
+		$add = "";
+	}
+	fwrite($h, date(DATE_RFC822) . " [{$txt}]{$add}\n");
 	fclose($h);
 }
 
@@ -121,7 +127,7 @@ window.setTimeout(function() {
 			div.appendChild(document.createTextNode(cnt + ' : ' + last));
 		};
 	})(xhr);
-	xhr.open('GET', 'log.txt', true);
+	xhr.open('GET', 'log.txt?r=' + Math.random() , true);
 	xhr.send();
 }, 500);
 </script>
