@@ -103,14 +103,23 @@ EOF;
 		foreach ($browser_headers as $key => $val) {
 			foreach ($replace as $rkey => $rval) {
 				if (strtoupper($key) == $rkey) {
-					$val = $rval;
-					break;
+					if ($rval) {
+						$val = $rval;
+						break;
+					} else {
+						/* skip */
+						continue 2;
+					}
 				}
 			}
 			$chttp->setHeader($key, $val);
 		}
 		$chttp->GET();
 		// $chttp->_DP();
+		$headers = $chttp->getResponseHeaders();
+		foreach ($headers as $key => $val) {
+			header("{$key}: {$val}");
+		}
 		print $chttp->getBody();
 	} else {
 		header('HTTP/1.0 404 Not Found');
