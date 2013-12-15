@@ -20,8 +20,12 @@ function _createShapeRect(w, h)
 		inclusion._elem = document.createElement('DIV');
 		if (src) {
 			var img = document.createElement('IMG');
-			img.style.width  = '100%';
-			img.style.height = '100%';
+			var margin = 2;
+			img.style.width  = (100 - margin * 2) + '%';
+			img.style.height = (100 - margin * 2) + '%';
+			img.style.position = 'absolute';
+			img.style.left = margin + '%';
+			img.style.top  = margin + '%';
 			img.src = src;
 			inclusion._elem.appendChild(img);
 		}
