@@ -1,0 +1,284 @@
+<div id='view'></div>
+<script>
+
+function _createShapeRect(w, h)
+{
+	this._container = {
+		w : w,
+		h : h
+	};
+	this._elem = document.createElement('DIV');
+	this._inclusions = [];
+	this._appendInclusion = function(l, t, w, h, src, styles) {
+		var inclusion = {};
+		inclusion.box = {
+			l : l,
+			t : t,
+			w : w,
+			h : h
+		};
+		inclusion._elem = document.createElement('DIV');
+		if (src) {
+			var img = document.createElement('IMG');
+			img.style.width  = '100%';
+			img.style.height = '100%';
+			img.src = src;
+			inclusion._elem.appendChild(img);
+		}
+		styles.position = 'absolute';
+		for (var prop in styles) {
+			inclusion._elem.style[prop] = styles[prop];
+		}
+		this._inclusions.push(inclusion);
+		this._elem.appendChild(inclusion._elem);
+	};
+	this._reShape = function(w, h) {
+		this._elem.style.width  = w + 'px';
+		this._elem.style.height = h + 'px';
+		var mag = {
+			w : (w / this._container.w),
+			h : (h / this._container.h)
+		};
+		for (var i = 0; i < this._inclusions.length; i++) {
+			var inclusion = this._inclusions[i];
+			var style = inclusion._elem.style;
+			style.left   = (inclusion.box.l * mag.w) + 'px';
+			style.top    = (inclusion.box.t * mag.h) + 'px';
+			style.width  = (inclusion.box.w * mag.w) + 'px';
+			style.height = (inclusion.box.h * mag.h) + 'px';
+		}
+	};
+}
+
+var shapeLayout = {
+	_rects : [],
+	_selectRect : function(in_w, in_h) {
+		var asp = in_w / in_h;
+		var min = {
+			value : Number.POSITIVE_INFINITY,
+			index : -1
+		};
+		for (var i = 0; i < this._rects.length; i++) {
+			var container = this._rects[i]._container;
+			var cand = Math.abs((container.w / container.h) - asp);
+			if (cand < min.value) {
+				min.value = cand;
+				min.index = i;
+			}
+		}
+		return this._rects[min.index];
+	},
+	/* API */
+	appendRect : function(in_rect) {
+		/*
+			in_rect.w						: container-width
+			in_rect.h						: container-height
+			in_rect.inclusions[n].l			: left
+			in_rect.inclusions[n].t			: top
+			in_rect.inclusions[n].w			: width
+			in_rect.inclusions[n].h			: height
+			in_rect.inclusions[n].src		: image-src
+			in_rect.inclusions[n].styles	: CSS
+		*/
+		var rect = new _createShapeRect(in_rect.w, in_rect.h);
+		for (var i = 0; i < in_rect.inclusions.length; i++) {
+			var inc = in_rect.inclusions[i];
+			rect._appendInclusion(inc.l, inc.t, inc.w, inc.h, inc.src, inc.styles);
+		}
+		this._rects.push(rect);
+	},
+	/* API */
+	resizedElem : function(in_w, in_h) {
+		/*
+			in_w : width
+			in_h : height
+		*/
+		var rect = this._selectRect(in_w, in_h);
+		rect._reShape(in_w, in_h);
+		return rect._elem;
+	}
+};
+
+</script>
+<script>
+
+shapeLayout.appendRect({
+	w : 100,
+	h : 100,
+	inclusions : [
+		{
+			l : 0,
+			t : 0,
+			w : 50,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#cccccc'}
+		},
+		{
+			l : 50,
+			t : 0,
+			w : 50,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#aaaaaa'}
+		},
+		{
+			l : 0,
+			t : 50,
+			w : 70,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#888888'}
+		},
+		{
+			l : 50,
+			t : 50,
+			w : 50,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#666666'}
+		},
+		{
+			l : 5,
+			t : 5,
+			w : 90,
+			h : 90,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#eeeeee', opacity : '0.2'}
+		}
+	]
+});
+
+shapeLayout.appendRect({
+	w : 200,
+	h : 100,
+	inclusions : [
+		{
+			l : 0,
+			t : 0,
+			w : 100,
+			h : 100,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#cccccc'}
+		},
+		{
+			l : 100,
+			t : 0,
+			w : 100,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#aaaaaa'}
+		},
+		{
+			l : 100,
+			t : 50,
+			w : 70,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#888888'}
+		},
+		{
+			l : 170,
+			t : 50,
+			w : 30,
+			h : 50,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#666666'}
+		},
+		{
+			l : 5,
+			t : 5,
+			w : 190,
+			h : 90,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : 'eeeeee', opacity : '0.2'}
+		}
+	]
+});
+
+shapeLayout.appendRect({
+	w : 100,
+	h : 200,
+	inclusions : [
+		{
+			l : 0,
+			t : 0,
+			w : 100,
+			h : 100,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#cccccc'}
+		},
+		{
+			l : 0,
+			t : 100,
+			w : 50,
+			h : 100,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#aaaaaa'}
+		},
+		{
+			l : 50,
+			t : 100,
+			w : 50,
+			h : 70,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#888888'}
+		},
+		{
+			l : 50,
+			t : 170,
+			w : 50,
+			h : 30,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#666666'}
+		},
+		{
+			l : 5,
+			t : 5,
+			w : 90,
+			h : 190,
+			src : null,
+			styles : {border : 'solid 1px white', backgroundColor : '#eeeeee', opacity : '0.2'}
+		}
+	]
+});
+
+var mySampleViewer = {
+	r : 0.9,
+	w : 0,
+	h : 0,
+	current : null,
+	reDraw : function(in_container) {
+		var update = false;
+		if (this.w != window.innerWidth) {
+			update = true;
+			this.w = window.innerWidth;
+		}
+		if (this.h != window.innerHeight) {
+			update = true;
+			this.h = window.innerHeight;
+		}
+		if (update) {
+			var resized = shapeLayout.resizedElem(this.w * this.r, this.h * this.r);
+			if (!this.current) {
+				in_container.appendChild(resized);
+			} else {
+				in_container.replaceChild(resized, this.current);
+			}
+			this.current = resized;
+		}
+	}
+};
+
+function draw()
+{
+	mySampleViewer.reDraw(document.getElementById('view'));
+}
+
+draw();
+
+window.addEventListener('resize', function() {
+	draw();
+}, false);
+
+</script>
