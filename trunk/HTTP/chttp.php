@@ -550,7 +550,6 @@ class CHttp
 				$size_s = $data_e + CRLFLEN;
 			}
 		}
-		// don't remove this _DP to debug
 		$this->_DP('invalid chunked-format');
 	}
 }
@@ -578,6 +577,7 @@ class CHttpRequestPool
 				'chttp'  => $in_chttp,
 				'method' => $in_method,
 				'entity' => $in_entity,
+				'mtime' => -1,
 				'state'  => POOL_ESTATE_DEFAULT));
 		return count($this->_pool);
 	}
@@ -599,7 +599,7 @@ class CHttpRequestPool
 			}
 		} else {
 			$finished = 0;
-			$start = time();
+			$start = microtime(TRUE);
 			$limit = $start + $this->_timeout_all;
 			for ($i = 0; $i < $entries_in_pool; $i++) {
 				$e =& $this->_pool[$i];
@@ -622,13 +622,14 @@ class CHttpRequestPool
 						case CHTTP_RCEVRESPONSE_DONE :
 						default :
 							$iosleep = FALSE;
+							$e['mtime'] = microtime(TRUE) - $start;
 							$e['state'] = POOL_ESTATE_DONE;
 							$finished++;
 							break;
 						}
 					}
 				}
-				if (time() > $limit) {
+				if (microtime(TRUE) > $limit) {
 					for ($i = 0; $i < $entries_in_pool; $i++) {
 						$e =& $this->_pool[$i];
 						$e['chttp']->_streamClose();
@@ -645,16 +646,20 @@ class CHttpRequestPool
 		}
 	}
 
-	function getRequest($in_url) {
+	function getRequest($in_url, $in_target = 'chttp') {
 		// fragment must be removed in "$in_url".
 		foreach ($this->_pool as $entry) {
 			if ($in_url != $entry['chttp']->url()) {
 				continue;
 			} else {
-				return $entry['chttp'];
+				return $entry[$in_target];
 			}
 		}
 		return NULL;
+	}
+
+	function getTimeRecord($in_url) {
+		return $this->getRequest($in_url, 'mtime');
 	}
 
 	function getFinishedRequests() {
