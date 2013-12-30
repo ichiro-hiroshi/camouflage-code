@@ -421,13 +421,13 @@ class CHttp
 
 	function _setDefaultHeaders() {
 		$default = array(
-			'Host'			=> $this->_parsedUrl['host'],
-			'Connection'	=> 'Close'
+			'Host' => $this->_parsedUrl['host'],
+			'Connection' => 'Close'
 		);
 		$browser_headers = apache_request_headers();
-		$asis = array('User-Agent', 'Accept', 'Accept-Language', 'Accept-Charset');
+		$asis = array('USER-AGENT', 'ACCEPT', 'ACCEPT-LANGUAGE', 'ACCEPT-CHARSET');
 		foreach ($browser_headers as $key => $val) {
-			if (in_array($key, $asis)) {
+			if (in_array(strtoupper($key), $asis)) {
 				$default[$key] = $val;
 			}
 		}

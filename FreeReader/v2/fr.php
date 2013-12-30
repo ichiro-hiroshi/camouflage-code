@@ -6,27 +6,44 @@
 
 class infoStack
 {
-	private $_max = 5;
-	private $_dup = array();
-	private $_buf = array();
-	function push($in_info, $in_sup = NULL) {
-		if (array_key_exists($in_info, $this->_dup)) {
-			$this->_dup[$in_info]++;
-			if ($this->_dup[$in_info] > $this->_max) {
-				return;
+	private $currBuff = array();
+	private $ctxStack = array();
+	private $dupCount = array();
+	function pushCtx($in_info = NULL) {
+		if (count($this->currBuff) > 0) {
+			for ($i = 0; $i < count($this->currBuff['msg']); $i++) {
+				$msg = $this->currBuff['msg'][$i];
+				$this->currBuff['msg'][$i] = sprintf('%04d', $this->dupCount[$msg]) . " : {$msg}";
 			}
-		} else {
-			$this->_dup[$in_info] = 1;
+			array_push($this->ctxStack, $this->currBuff);
+			$this->dupCount = array();
 		}
-		array_push($this->_buf, ($in_sup ? "{$in_info} {$in_sup}" : $in_info));
+		if ($in_info) {
+			$this->currBuff['ctx'] = $in_info;
+			$this->currBuff['msg'] = array();
+		} else {
+			$this->currBuff = array();
+		}
 	}
-	function reflesh() {
-		$this->_dup = array();
+	function pushMsg($in_info) {
+		if (array_key_exists($in_info, $this->dupCount)) {
+			$this->dupCount[$in_info]++;
+		} else {
+			$this->dupCount[$in_info] = 1;
+			array_push($this->currBuff['msg'], $in_info);
+		}
 	}
-	function dp() {
+	function printMsg() {
+		$cnt = 1;
+		$indent = "\t";
+		$this->pushCtx();
 		header('Content-Type: text/plain');
-		foreach ($this->_buf as $info) {
-			print "{$info}\n";
+		foreach ($this->ctxStack as $buff) {
+			print sprintf('%02d', $cnt) . ". {$buff['ctx']}\n";
+			foreach ($buff['msg'] as $msg) {
+				print "{$indent}{$msg}\n";
+			}
+			$cnt++;
 		}
 		exit;
 	}
@@ -34,19 +51,36 @@ class infoStack
 
 $STACK = new infoStack;
 
-function _INFO($in_msg, $in_exit = FALSE)
+function INFO($in_info, $in_newCtx)
 {
 	global $STACK;
-	/* return; */
-	$STACK->push($in_msg);
-	if ($in_exit) {
-		$STACK->dp();
+	if ($in_newCtx) {
+		$STACK->pushCtx($in_info);
+	} else {
+		$STACK->pushMsg($in_info);
 	}
 }
 
-function _DP($in_msg)
+function INFO1($in_info)
 {
-	_INFO($in_msg, TRUE);
+	INFO($in_info, TRUE);
+}
+
+function INFO2($in_info)
+{
+	INFO($in_info, FALSE);
+}
+
+function DP()
+{
+	global $STACK;
+	$stack = debug_backtrace();
+	foreach ($stack as $scope) {
+		if (array_key_exists('function', $scope)) {
+			INFO1($scope['function']);
+		}
+	}
+	$STACK->printMsg();
 }
 
 /*
@@ -131,7 +165,7 @@ function xml_explode($in_elem, $in_xml)
 	$c_e = "</{$in_elem}>";
 	$fragments = explode($c_e, $in_xml);
 	if (count($fragments) == 1) {
-		_INFO("can not explode using {$c_e}");
+		INFO2("can not explode using {$c_e}");
 		return NULL;
 	}
 	$items = array();
@@ -139,7 +173,6 @@ function xml_explode($in_elem, $in_xml)
 		$o_e = "<{$in_elem}";
 		$p = strrpos($fragment, $o_e);
 		if ($p === FALSE) {
-			_INFO("can not find {$o_e}");
 			continue;
 		}
 		$p += strlen($o_e);
@@ -147,12 +180,12 @@ function xml_explode($in_elem, $in_xml)
 		if (($char == '>') || ($char == ' ')) {
 			$p = strpos($fragment, '>', $p);
 			if ($p === FALSE) {
-				_INFO("can not find '>' for {$o_e}");
+				INFO2("not find '>' for {$o_e}");
 				continue;
 			}
 			array_push($items, substr($fragment, $p + 1));
 		} else {
-			_INFO("find {$o_e}xxx");
+			INFO2("not find open-element");
 		}
 	}
 	if (count($items) > 0) {
@@ -162,6 +195,7 @@ function xml_explode($in_elem, $in_xml)
 	}
 }
 
+date_default_timezone_set('Asia/Tokyo');
 define('DATEFORMAT', 'Ymd His');
 
 function parse($in_xml)
@@ -169,10 +203,10 @@ function parse($in_xml)
 	foreach (array('item', 'entry') as $sep) {
 		$items = xml_explode($sep, $in_xml);
 		if ($items) {
-			_INFO("xml_explode using {$sep}");
+			INFO2("xml_explode using {$sep}");
 			break;
 		} else {
-			_INFO("can not xml_explode using {$sep}");
+			INFO2("can not xml_explode using {$sep}");
 		}
 	}
 	if (!$items) {
@@ -254,30 +288,30 @@ function parse($in_xml)
 	foreach ($items as $item) {
 		$tmp = array();
 		foreach ($_elems as $dstElem => $meta) {
+			if ($meta['must']) {
+				INFO2("{$dstElem} is mandatory");
+			}
 			foreach ($meta['cand'] as $src) {
 				if (is_array($src)) {
-					_INFO("search <{$src[0]} {$src[1]}=' ... '>");
 					$found = util_getAttribute($item, $src[0], $src[1]);
 				} else {
-					_INFO("search <{$src}> ... ");
 					$found = util_textContent($item, $src);
 				}
 				if ($found) {
-					_INFO("find {$dstElem}");
+					INFO2("find {$dstElem}");
 					$tmp[$dstElem] = call_user_func($meta['hook'], $found);
 					break;
 				} else {
-					_INFO("can not find {$dstElem}");
+					INFO2("not find {$dstElem}");
 				}
 			}
 			if (!$found && $meta['must']) {
-				_INFO("can not find {$dstElem} and it is mandatory");
 				continue 2;
 			}
 		}
 		array_push($ret, $tmp);
 	}
-	//_DP(__LINE__);
+	//DP();
 	return $ret;
 }
 
@@ -290,7 +324,7 @@ define('RECORD', DB_PATH . '/record.txt');
 
 if (!is_dir(DB_PATH)) {
 	if (!mkdir(DB_PATH)) {
-		_DP(__LINE__);
+		DP();
 	}
 }
 
@@ -338,13 +372,17 @@ function responseFromCach($in_urls)
 {
 	$ret = array();
 	foreach ($in_urls as $url) {
+		INFO1("search cache ... {$url}");
 		$buf = @file_get_contents(url2cache($url));
 		if (!$buf) {
+			INFO2("can not read cache");
 			continue;
 		}
 		$fresh = array_filter(unserialize($buf), 'dateFilter');
 		if (count($fresh) > 0) {
 			array_push($ret, $fresh);
+		} else {
+			INFO2("not find fresh cache-data");
 		}
 	}
 	if (count($ret) > 0) {
@@ -365,19 +403,27 @@ function responseFromNet($in_urls)
 	$ret = array();
 	$rec = array();
 	foreach ($in_urls as $url) {
+		INFO1("search net ... {$url}");
 		$r = $pool->getRequest($url);
 		$parsed = parse($r->getBody());
 		if (!$parsed) {
+			INFO2("can not parse");
 			continue;
 		}
 		$rec[$url] = $pool->getTimeRecord($url);
 		$fresh = array_filter($parsed, 'dateFilter');
 		if (count($fresh) > 0) {
 			array_push($ret, $fresh);
-			@file_put_contents(url2cache($url), serialize($fresh));
+			if (!@file_put_contents(url2cache($url), serialize($fresh))) {
+				INFO2("can not update cahce");
+			}
+		} else {
+			INFO2("not find fresh net-data");
 		}
 	}
-	updateTimeRecord($rec);
+	if (!updateTimeRecord($rec)) {
+		INFO2("can not update time-record");
+	}
 	if (count($ret) > 0) {
 		return $ret;
 	} else {
@@ -389,6 +435,7 @@ function priorUrls($in_threshold = 2)
 {
 	$tr = timeRecord();
 	if (!$tr) {
+		INFO2("can not use time-record");
 		return NULL;
 	}
 	$urls = array();
@@ -403,8 +450,10 @@ function priorUrls($in_threshold = 2)
 		}
 	}
 	if (count($urls) > 0) {
+		INFO2("use time-record * " . count($urls));
 		return $urls;
 	} else {
+		INFO2("use min-record : " . count($urls));
 		return array($min['url']);
 	}
 }
@@ -441,7 +490,7 @@ $RSS_LIST = array(
 	'http://markezine.jp/rss/new/20/index.xml'
 );
 
-_INFO('$RSS_LIST : ' . count($RSS_LIST));
+INFO1("RSS_LIST : " . count($RSS_LIST));
 
 /*
 	Handle Query Parameter
@@ -513,17 +562,17 @@ $data = NULL;
 for ($i = 0; $i < count($priority); $i++) {
 	if ($priority[$i] == 'C') {
 		/* Cache */
-		_INFO('search cache');
+		INFO1("search cache");
 		$data = responseFromCach($RSS_LIST);
 		$next = array_keys($RSS_LIST);
 	} elseif ($priority[$i] == 'TR') {
 		/* Time-Record */
-		_INFO('search net (time-record)');
+		INFO1("search net (time-record)");
 		$urls = priorUrls();
 		$data = responseFromNet($urls);
 		$next = array_values(array_diff_key(array_flip($RSS_LIST), array_flip($urls)));
 	} else {
-		_INFO('search net * ' . count($priority[$i]));
+		INFO1("search net (param)");
 		$urls = array_keys(array_intersect(array_flip($RSS_LIST), $priority[$i]));
 		$data = responseFromNet($urls);
 		$next = array_values(array_diff(array_keys($RSS_LIST), $priority[$i]));
@@ -559,7 +608,7 @@ for ($i = 0; $i < count($priority); $i++) {
 }
 
 if (defined('SHOWLOG')) {
-	_DP(__LINE__);
+	DP();
 } else {
 	header('Content-Type: text/plain');
 	print json_encode(array('data' => $data, 'next' => $next));
