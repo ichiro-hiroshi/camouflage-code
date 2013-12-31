@@ -51,33 +51,26 @@ class infoStack
 
 $STACK = new infoStack;
 
-function INFO($in_info, $in_newCtx)
-{
-	global $STACK;
-	if ($in_newCtx) {
-		$STACK->pushCtx($in_info);
-	} else {
-		$STACK->pushMsg($in_info);
-	}
-}
-
 function INFO1($in_info)
 {
-	INFO($in_info, TRUE);
+	global $STACK;
+	$STACK->pushCtx($in_info);
 }
 
 function INFO2($in_info)
 {
-	INFO($in_info, FALSE);
+	global $STACK;
+	$STACK->pushMsg($in_info);
 }
 
 function DP()
 {
 	global $STACK;
+	INFO1("backtrace");
 	$stack = debug_backtrace();
 	foreach ($stack as $scope) {
 		if (array_key_exists('function', $scope)) {
-			INFO1($scope['function']);
+			INFO2($scope['function']);
 		}
 	}
 	$STACK->printMsg();
@@ -497,47 +490,39 @@ INFO1("RSS_LIST : " . count($RSS_LIST));
 */
 
 define('PRIORITY', 'p');
-define('RSSCOUNT', count($RSS_LIST));
 
 function parsePriority($in_raw)
 {
 	if (($in_raw == 'C') || ($in_raw == 'TR')) {
 		return $in_raw;
-	} elseif (preg_match('/^([0-9]+)$/', $in_raw)) {
-		return array($in_raw);
-	} elseif (preg_match('/^([0-9]+)-([0-9]+)$/', $in_raw, $m)) {
-		$list = array();
-		for ($j = $m[1]; $j <= $m[2]; $j++) {
-			array_push($list, $j);
-		}
-		if (count($list) > 0) {
-			return $list;
-		}
+	} elseif (preg_match('/^\d[,\d]*$/', $in_raw)) {
+		return explode(',', $in_raw);
+	} else {
+		return NULL;
 	}
 }
 
 function createPriority()
 {
-	if (RSSCOUNT == 0) {
-		return NULL;
-	}
 	if (array_key_exists(PRIORITY, $_GET)) {
-		$tmp = explode(',', $_GET[PRIORITY]);
-	} else {
-		$tmp = array('0-' . (RSSCOUNT - 1));
-	}
-	$ret = array();
-	for ($i = 0; $i < count($tmp); $i++) {
-		$parsed = parsePriority($tmp[$i]);
-		if ($parsed) {
-			array_push($ret, $parsed);
+		$tmp = explode('|', $_GET[PRIORITY]);
+		$ret = array();
+		for ($i = 0; $i < count($tmp); $i++) {
+			$parsed = parsePriority($tmp[$i]);
+			if ($parsed) {
+				array_push($ret, $parsed);
+			}
+		}
+		/*
+			I : C|1|2,3,4
+			O : array('C', array(1), array(2,3,4))
+		*/
+		if (count($ret) > 0) {
+			return $ret;
 		}
 	}
-	/*
-		I : C,1,2-4
-		O : array('C', array(1), array(2,3,4))
-	*/
-	return $ret;
+	global $RSS_LIST;
+	return array(array_keys($RSS_LIST));
 }
 
 /*
@@ -603,7 +588,10 @@ for ($i = 0; $i < count($priority); $i++) {
 		)
 	*/
 	if ($data) {
+		INFO2("search done");
 		break;
+	} else {
+		INFO2("search failed");
 	}
 }
 
@@ -613,5 +601,16 @@ if (defined('SHOWLOG')) {
 	header('Content-Type: text/plain');
 	print json_encode(array('data' => $data, 'next' => $next));
 }
+
+/*
+
+usage :
+
+	SCRIPT
+	SCRIPT?p=C|TR
+	SCRIPT?p=0,1,2|3,4,5&debug=log
+	SCRIPT?debug=rec
+
+*/
 
 ?>
