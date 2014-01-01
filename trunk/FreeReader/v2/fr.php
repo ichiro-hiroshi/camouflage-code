@@ -193,9 +193,11 @@ define('DATEFORMAT', 'Ymd His');
 
 function strip($in_str)
 {
-	if (strpos('<![CDATA[') === FALSE) {
+	if (strpos($in_str, '<![CDATA[') === FALSE) {
+		/* for "&lt;p&gt; foo &lt;/p&gt;" */
 		$html = htmlspecialchars_decode($in_str);
 	} else {
+		/* for "<![CDATA[<p> foo </p>]]>" */
 		$html = util_innerString($in_str, '<![CDATA[', ']]>');
 	}
 	return util_white2space(strip_tags($html));

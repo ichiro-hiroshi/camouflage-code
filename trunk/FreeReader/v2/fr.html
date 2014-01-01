@@ -3,17 +3,17 @@
 
 <script>
 
-var _SCRIPT = 'fr.php';
-var _Q1 = _SCRIPT + '?p=C|TR';
-var _D1 = _SCRIPT + '?debug=log';
-var _D2 = _SCRIPT + '?debug=rec';
+var SCRIPT = 'fr.php';
+var Q1 = SCRIPT + '?p=C|TR';
+var D1 = SCRIPT + '?debug=log';
+var D2 = SCRIPT + '?debug=rec';
 
 (function(in_w) {
 	var elems = in_w.document.getElementsByTagName('*');
 	for (var i = 0; i < elems.length; i++) {
 		var e = elems.item(i);
 		if (e.hasAttribute('ID')) {
-			in_w['_' + e.getAttribute('ID')] = e;
+			in_w[e.getAttribute('ID')] = e;
 		}
 	}
 })(window);
@@ -90,10 +90,10 @@ HTMLTableRowElement.prototype.applyData = function(in_data, in_colHeader) {
 	return rowHeader;
 };
 
-var req = {
+var ajax = {
 	_cur : null,
 	_abort : function() {
-		this._cur._abort();
+		this._cur.abort();
 		this._cur = null;
 	},
 	send : function(in_script, in_hook) {
@@ -118,14 +118,35 @@ var req = {
 </script>
 <script>
 
-// sample
-req.send(_Q1, function(in_status, in_response) {
-	var table = document.createElement('TABLE');
-	_VIEW.appendChild(table);
-	var response = eval('(' + in_response + ')');
-	for (var i = 0; i < response.data.length; i++) {
-		table.applyData(response.data[i]);
+var TABLE = document.createElement('TABLE');
+VIEW.appendChild(TABLE);
+
+var tableData = {
+	_uniqs : {},
+	_isUniq : function(in_symbol) {
+		if (this._uniqs[in_symbol]) {
+			return false;
+		} else {
+			this._uniqs[in_symbol] = true;
+			return true;
+		}
+	},
+	make : function(in_src) {
 	}
-});
+};
+
+function callback(in_status, in_response)
+{
+	if (in_status != 200) {
+		return;
+	}
+	var obj = eval('(' + in_response + ')');
+	TABLE.applyData(tableData.make(obj.data));
+	if (obj.next.length > 0) {
+		ajax.send((SCRIPT + '?p=' + obj.next.join(',')), callback);
+	}
+}
+
+ajax.send(Q1, callback);
 
 </script>
