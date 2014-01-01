@@ -516,7 +516,8 @@ $RSS_LIST = array(
 	'http://efcl.info/category/javascript/feed/',
 	'http://www.jpcert.or.jp/rss/jpcert.rdf',
 	'http://adgang.jp/feed',
-	'http://markezine.jp/rss/new/20/index.xml'
+	'http://markezine.jp/rss/new/20/index.xml',
+	'http://media.looops.net/feed/'
 );
 
 INFO1("RSS_LIST : " . count($RSS_LIST));
