@@ -191,6 +191,16 @@ function xml_explode($in_elem, $in_xml)
 date_default_timezone_set('Asia/Tokyo');
 define('DATEFORMAT', 'Ymd His');
 
+function strip($in_str)
+{
+	if (strpos('<![CDATA[') === FALSE) {
+		$html = htmlspecialchars_decode($in_str);
+	} else {
+		$html = util_innerString($in_str, '<![CDATA[', ']]>');
+	}
+	return util_white2space(strip_tags($html));
+}
+
 function parse($in_xml)
 {
 	foreach (array('item', 'entry') as $sep) {
@@ -213,7 +223,7 @@ function parse($in_xml)
 				'title'
 			),
 			'hook' => function($in_data) {
-				return $in_data;
+				return strip($in_data);
 			}
 		),
 		'LINK' => array(
@@ -239,7 +249,7 @@ function parse($in_xml)
 				array('category', 'term')
 			),
 			'hook' => function($in_data) {
-				return $in_data;
+				return strip($in_data);
 			}
 		),
 		'DESC' => array(
@@ -253,7 +263,7 @@ function parse($in_xml)
 				'summary'
 			),
 			'hook' => function($in_data) {
-				return $in_data;
+				return strip($in_data);
 			}
 		),
 		'DATE' => array(
@@ -361,6 +371,30 @@ function dateFilter($in_elem)
 	return ($in_elem['DATE'] > date(DATEFORMAT, time() - LIFE));
 }
 
+$UNIQLINKS = array();
+
+function linkFilter($in_elem)
+{
+	global $UNIQLINKS;
+	if (in_array($in_elem['LINK'], $UNIQLINKS)) {
+		return FALSE;
+	} else {
+		array_push($UNIQLINKS, $in_elem['LINK']);
+		return TRUE;
+	}
+}
+
+function filterChain($in_elem)
+{
+	if (!dateFilter($in_elem)) {
+		return FALSE;
+	}
+	if (!linkFilter($in_elem)) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
 function responseFromCach($in_urls)
 {
 	$ret = array();
@@ -371,7 +405,7 @@ function responseFromCach($in_urls)
 			INFO2("can not read cache");
 			continue;
 		}
-		$fresh = array_filter(unserialize($buf), 'dateFilter');
+		$fresh = array_filter(unserialize($buf), 'filterChain');
 		if (count($fresh) > 0) {
 			array_push($ret, $fresh);
 		} else {
@@ -404,7 +438,7 @@ function responseFromNet($in_urls)
 			continue;
 		}
 		$rec[$url] = $pool->getTimeRecord($url);
-		$fresh = array_filter($parsed, 'dateFilter');
+		$fresh = array_filter($parsed, 'filterChain');
 		if (count($fresh) > 0) {
 			array_push($ret, $fresh);
 			if (!@file_put_contents(url2cache($url), serialize($fresh))) {
@@ -545,19 +579,21 @@ if (array_key_exists('debug', $_GET)) {
 $priority = createPriority();
 $data = NULL;
 for ($i = 0; $i < count($priority); $i++) {
+	if (is_array($priority[$i])) {
+		INFO1("query ... array(" . implode(',', $priority[$i]) . ")");
+	} else {
+		INFO1("query ... {$priority[$i]}");
+	}
 	if ($priority[$i] == 'C') {
 		/* Cache */
-		INFO1("search cache");
 		$data = responseFromCach($RSS_LIST);
 		$next = array_keys($RSS_LIST);
 	} elseif ($priority[$i] == 'TR') {
 		/* Time-Record */
-		INFO1("search net (time-record)");
 		$urls = priorUrls();
 		$data = responseFromNet($urls);
 		$next = array_values(array_diff_key(array_flip($RSS_LIST), array_flip($urls)));
 	} else {
-		INFO1("search net (param)");
 		$urls = array_keys(array_intersect(array_flip($RSS_LIST), $priority[$i]));
 		$data = responseFromNet($urls);
 		$next = array_values(array_diff(array_keys($RSS_LIST), $priority[$i]));
@@ -588,10 +624,10 @@ for ($i = 0; $i < count($priority); $i++) {
 		)
 	*/
 	if ($data) {
-		INFO2("search done");
+		INFO1("done");
 		break;
 	} else {
-		INFO2("search failed");
+		INFO1("failed & next-step");
 	}
 }
 
