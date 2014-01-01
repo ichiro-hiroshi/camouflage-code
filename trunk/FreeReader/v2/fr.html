@@ -5,8 +5,10 @@
 
 var SCRIPT = 'fr.php';
 var Q1 = SCRIPT + '?p=C|TR';
-var D1 = SCRIPT + '?debug=log';
-var D2 = SCRIPT + '?debug=rec';
+var D1 = SCRIPT + '?p=C&debug=log';
+var D2 = SCRIPT + '?p=TR&debug=log';
+var D3 = SCRIPT + '?debug=log';
+var D4 = SCRIPT + '?debug=rec';
 
 (function(in_w) {
 	var elems = in_w.document.getElementsByTagName('*');
@@ -141,7 +143,12 @@ CTRL.appendChild(READING);
 		})(in_debugs[prop]), false);
 		CTRL.appendChild(button);
 	}
-})({log : D1, rec : D2});
+})({
+	log : D1,
+	log : D2,
+	log : D3,
+	rec : D4
+});
 
 var ITEMLIST = document.createElement('TABLE');
 VIEW.appendChild(ITEMLIST);
