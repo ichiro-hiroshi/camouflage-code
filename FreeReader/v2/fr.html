@@ -1,0 +1,131 @@
+<div id='VIEW'></div>
+<div id='CTRL'></div>
+
+<script>
+
+var _SCRIPT = 'fr.php';
+var _Q1 = _SCRIPT + '?p=C|TR';
+var _D1 = _SCRIPT + '?debug=log';
+var _D2 = _SCRIPT + '?debug=rec';
+
+(function(in_w) {
+	var elems = in_w.document.getElementsByTagName('*');
+	for (var i = 0; i < elems.length; i++) {
+		var e = elems.item(i);
+		if (e.hasAttribute('ID')) {
+			in_w['_' + e.getAttribute('ID')] = e;
+		}
+	}
+})(window);
+
+</script>
+<script>
+
+HTMLTableElement.prototype.sort = function(in_col_pos, in_row_start) {
+	var rows = this.rows;
+	var order = [];
+	for (var i = in_row_start; i < rows.length; i++) {
+		order.push({val : rows.item(i).cells.item(in_col_pos).textContent, idx : i});
+	}
+	order.sort(function(e1, e2) {
+		return ((e1.val > e2.val) ? 1 : -1);
+	});
+	var replace = document.createElement('TABLE');
+	for (var i = 0; i < rows.length; i++) {
+		var j = (i < in_row_start) ? i : order[(i - in_row_start)].idx;
+		replace.appendChild(rows.item(j).cloneNode(true));
+	}
+	this.innerHTML = replace.innerHTML;
+};
+
+HTMLTableElement.prototype.applyData = function(in_data) {
+	if (typeof in_data != 'object') {
+		return false;
+	}
+	var header = {
+		row : (arguments.length > 1) ? arguments[1] : false,
+		col : (arguments.length > 2) ? arguments[2] : false
+	};
+	var once = true;
+	for (var prop in in_data) {
+		var row = document.createElement('TR');
+		var applied = row.applyData(in_data[prop], (header.col ? prop : null));
+		if (!applied) {
+			return false;
+		}
+		if (header.row && once) {
+			var rowHeader = document.createElement('TR');
+			rowHeader.applyData(applied, (header.col ? '' : null));
+			this.appendChild(rowHeader);
+			once = false;
+		}
+		this.appendChild(row);
+	}
+	return true;
+
+};
+
+HTMLTableRowElement.prototype.appendCell = function(in_data) {
+	var cell = document.createElement('TD');
+	if (typeof in_data != 'object') {
+		cell.appendChild(document.createTextNode(in_data));
+	} else {
+		cell.appendChild(in_data);
+	}
+	this.appendChild(cell);
+};
+
+HTMLTableRowElement.prototype.applyData = function(in_data, in_colHeader) {
+	if (typeof in_data != 'object') {
+		return null;
+	}
+	var rowHeader = [];
+	if (in_colHeader != null) {
+		this.appendCell(in_colHeader);
+	}
+	for (var prop in in_data) {
+		this.appendCell(in_data[prop]);
+		rowHeader.push(prop);
+	}
+	return rowHeader;
+};
+
+var req = {
+	_cur : null,
+	_abort : function() {
+		this._cur._abort();
+		this._cur = null;
+	},
+	send : function(in_script, in_hook) {
+		if (this._cur) {
+			this._abort();
+		}
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = (function(self, hook) {
+			return function() {
+				if (self._cur && (self._cur.readyState == 4)) {
+					(hook)(self._cur.status, self._cur.responseText);
+					self._cur = null;
+				}
+			}
+		})(this, in_hook);
+		xhr.open('GET', in_script);
+		xhr.send();
+		this._cur = xhr;
+	}
+};
+
+</script>
+<script>
+
+// sample
+req.send(_Q1, function(in_status, in_response) {
+	var table = document.createElement('TABLE');
+	_VIEW.appendChild(table);
+	var response = eval('(' + in_response + ')');
+	for (var i = 0; i < response.data.length; i++) {
+		table.applyData(response.data[i]);
+	}
+});
+
+</script>
