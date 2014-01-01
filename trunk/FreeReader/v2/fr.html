@@ -169,6 +169,7 @@ var srcData = {
 				}
 				var a = document.createElement('A');
 				a.href = line.LINK;
+				a.target = '_blank';
 				a.appendChild(document.createTextNode(line.TITLE));
 				rows.push([line.DATE, a, line.DESC]);
 			}
