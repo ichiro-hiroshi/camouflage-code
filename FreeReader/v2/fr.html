@@ -1,7 +1,7 @@
-<div id='VIEW'></div>
 <div id='CTRL'></div>
+<div id='VIEW'></div>
 
-<script>
+<script description='global'>
 
 var SCRIPT = 'fr.php';
 var Q1 = SCRIPT + '?p=C|TR';
@@ -19,7 +19,7 @@ var D2 = SCRIPT + '?debug=rec';
 })(window);
 
 </script>
-<script>
+<script description='utility'>
 
 HTMLTableElement.prototype.sort = function(in_col_pos, in_row_start) {
 	var rows = this.rows;
@@ -28,7 +28,7 @@ HTMLTableElement.prototype.sort = function(in_col_pos, in_row_start) {
 		order.push({val : rows.item(i).cells.item(in_col_pos).textContent, idx : i});
 	}
 	order.sort(function(e1, e2) {
-		return ((e1.val > e2.val) ? 1 : -1);
+		return ((e1.val > e2.val) ? -1 : 1);
 	});
 	var replace = document.createElement('TABLE');
 	for (var i = 0; i < rows.length; i++) {
@@ -92,36 +92,62 @@ HTMLTableRowElement.prototype.applyData = function(in_data, in_colHeader) {
 
 var ajax = {
 	_cur : null,
-	_abort : function() {
-		this._cur.abort();
-		this._cur = null;
+	stop : function() {
+		if (this._cur) {
+			this._cur.abort();
+			this._cur = null;
+		}
 	},
 	send : function(in_script, in_hook) {
-		if (this._cur) {
-			this._abort();
-		}
+		this.stop();
 		var xhr = new XMLHttpRequest();
 		xhr.onreadystatechange = (function(self, hook) {
 			return function() {
 				if (self._cur && (self._cur.readyState == 4)) {
 					(hook)(self._cur.status, self._cur.responseText);
-					self._cur = null;
 				}
 			}
 		})(this, in_hook);
-		xhr.open('GET', in_script);
+		var avoidCache = ((in_script.indexOf('?') > 0) ? '&r=' : '?r=') + Math.random();
+		xhr.open('GET', in_script + avoidCache);
 		xhr.send();
 		this._cur = xhr;
 	}
 };
 
 </script>
-<script>
+<script description='application'>
 
-var TABLE = document.createElement('TABLE');
-VIEW.appendChild(TABLE);
+var READING = document.createElement('BUTTON');
+READING.textContent = 'abort';
+READING.addEventListener('click', function() {
+	ajax.stop();
+	reading(false);
+}, false);
+CTRL.appendChild(READING);
 
-var tableData = {
+(function(in_debugs) {
+	for (var prop in in_debugs) {
+		var button = document.createElement('BUTTON');
+		button.textContent = prop;
+		button.addEventListener('click', (function(in_script) {
+			return function(e) {
+				ajax.send(in_script, function(in_status, in_response) {
+					var TEXTAREA = document.createElement('TEXTAREA');
+					VIEW.replaceChild(TEXTAREA, VIEW.firstChild);
+					TEXTAREA.value = in_response;
+				});
+			};
+		})(in_debugs[prop]), false);
+		CTRL.appendChild(button);
+	}
+})({log : D1, rec : D2});
+
+var ITEMLIST = document.createElement('TABLE');
+VIEW.appendChild(ITEMLIST);
+
+var srcData = {
+	_once : true,
 	_uniqs : {},
 	_isUniq : function(in_symbol) {
 		if (this._uniqs[in_symbol]) {
@@ -131,22 +157,121 @@ var tableData = {
 			return true;
 		}
 	},
-	make : function(in_src) {
+	make : function(in_data) {
+		var rows = [];
+		/* feeds */
+		for (var i = 0; i < in_data.length; i++) {
+			/* items */
+			for (var j = 0; j < in_data[i].length; j++) {
+				var line = in_data[i][j];
+				if (!this._isUniq(line.LINK)) {
+					continue;
+				}
+				var a = document.createElement('A');
+				a.href = line.LINK;
+				a.appendChild(document.createTextNode(line.TITLE));
+				rows.push([line.DATE, a, line.DESC]);
+			}
+		}
+		if (this._once) {
+			rows.unshift(['date', 'title', 'descripttion']);
+			this._once = false;
+		}
+		return rows;
 	}
 };
 
+function reading(in_sw)
+{
+	if (in_sw) {
+		READING.disabled = false;
+		READING.className = 'enabled';
+	} else {
+		READING.disabled = true;
+		READING.className = 'disabled';
+	}
+}
+
 function callback(in_status, in_response)
 {
+	reading(false);
 	if (in_status != 200) {
 		return;
 	}
 	var obj = eval('(' + in_response + ')');
-	TABLE.applyData(tableData.make(obj.data));
+	ITEMLIST.applyData(srcData.make(obj.data), false, false);
+	/* order by line.DATE */
+	ITEMLIST.sort(0, 1);
 	if (obj.next.length > 0) {
+		reading(true);
 		ajax.send((SCRIPT + '?p=' + obj.next.join(',')), callback);
 	}
 }
 
+reading(true);
 ajax.send(Q1, callback);
 
 </script>
+<style type='text/css'>
+
+BUTTON {
+	padding: 3px;
+	border: solid 1px gray;
+	background: -moz-linear-gradient(top, silver, gray);
+	background: -webkit-gradient(linear, left top, left bottom, from(silver), to(gray));
+	border-radius: 3px;
+
+}
+BUTTON:hover {
+	background: -moz-linear-gradient(top, white, silver);
+	background: -webkit-gradient(linear, left top, left bottom, from(white), to(silver));
+}
+@-webkit-keyframes reading {
+	0% {
+		border: solid 1px yellow;
+	}
+	100% {
+		border: solid 1px red;
+	}
+}
+@-moz-keyframes reading {
+	0% {
+		border: solid 1px yellow;
+	}
+	100% {
+		border: solid 1px red;
+	}
+}
+BUTTON.enabled {
+	-webkit-animation-name: reading;
+	-webkit-animation-timing-function: linear;
+	-webkit-animation-iteration-count: infinite;
+	-webkit-animation-duration: 1s;
+	-moz-animation-name: reading;
+	-moz-animation-timing-function: linear;
+	-moz-animation-iteration-count: infinite;
+	-moz-animation-duration: 1s;
+}
+TEXTAREA {
+	width: 100%;
+	height: 80%;
+	border: solid 1px silver;
+}
+A {
+	text-decoration: none;
+	color: blue;
+}
+TABLE, TD {
+	border-collapse: collapse;
+}
+TD {
+	border: solid 1px silver;
+	padding: 3px;
+	max-width: 1000px;
+}
+TR:first-child {
+	color: white;
+	background-color: gray;
+}
+
+</style>
