@@ -505,7 +505,7 @@ $RSS_LIST = array(
 	'http://feeds.journal.mycom.co.jp/rss/mycom/keitai/android',
 	'http://mozilla.jp/blog/feed/',
 	'http://www.publickey1.jp/atom.xml',
-	'http://techwave.jp/index.rdf',
+	'http://techwave.jp/feed',
 	'http://www.infoq.com/jp/rss/',
 	'http://feeds.feedburner.com/FineSoftwareWritings',
 	'http://rss.rssad.jp/rss/gihyo/wdpress/feed/rss2',

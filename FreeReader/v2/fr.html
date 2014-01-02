@@ -207,9 +207,11 @@ function callback(in_status, in_response)
 		return;
 	}
 	var obj = eval('(' + in_response + ')');
-	ITEMLIST.applyData(srcData.make(obj.data), false, false);
-	/* order by line.DATE */
-	ITEMLIST.sort(0, 1);
+	if (obj.data) {
+		ITEMLIST.applyData(srcData.make(obj.data), false, false);
+		/* order by line.DATE */
+		ITEMLIST.sort(0, 1);
+	}
 	if (obj.next.length > 0) {
 		reading(true);
 		ajax.send((SCRIPT + '?p=' + obj.next.join(',')), callback);
