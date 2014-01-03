@@ -373,17 +373,19 @@ function dateFilter($in_elem)
 	return ($in_elem['DATE'] > date(DATEFORMAT, time() - LIFE));
 }
 
-$UNIQLINKS = array();
+$UNIQS = array('LINK' => array(), 'TITLE' => array());
 
-function linkFilter($in_elem)
+function uniqFilter($in_elem)
 {
-	global $UNIQLINKS;
-	if (in_array($in_elem['LINK'], $UNIQLINKS)) {
-		return FALSE;
-	} else {
-		array_push($UNIQLINKS, $in_elem['LINK']);
-		return TRUE;
+	global $UNIQS;
+	foreach ($UNIQS as $name => $dummy) {
+		if (in_array($in_elem[$name], $UNIQS[$name])) {
+			return FALSE;
+		} else {
+			array_push($UNIQS[$name], $in_elem[$name]);
+		}
 	}
+	return TRUE;
 }
 
 function filterChain($in_elem)
@@ -391,7 +393,7 @@ function filterChain($in_elem)
 	if (!dateFilter($in_elem)) {
 		return FALSE;
 	}
-	if (!linkFilter($in_elem)) {
+	if (!uniqFilter($in_elem)) {
 		return FALSE;
 	}
 	return TRUE;
@@ -599,7 +601,8 @@ for ($i = 0; $i < count($priority); $i++) {
 	} else {
 		$urls = array_keys(array_intersect(array_flip($RSS_LIST), $priority[$i]));
 		$data = responseFromNet($urls);
-		$next = array_values(array_diff(array_keys($RSS_LIST), $priority[$i]));
+		// $next = array_values(array_diff(array_keys($RSS_LIST), $priority[$i]));
+		$next = array();
 	}
 	/*
 		$data = array(
