@@ -4,11 +4,13 @@
 <script description='global'>
 
 var SCRIPT = 'fr.php';
-var Q1 = SCRIPT + '?p=C|TR';
-var D1 = SCRIPT + '?p=C&debug=log';
-var D2 = SCRIPT + '?p=TR&debug=log';
-var D3 = SCRIPT + '?debug=log';
-var D4 = SCRIPT + '?debug=rec';
+var QUERY = SCRIPT + '?p=C|TR';
+var DEBUG = {
+    'Log.C'   : SCRIPT + '?p=C&debug=log',
+    'Log.TR'  : SCRIPT + '?p=TR&debug=log',
+    'Log.ALL' : SCRIPT + '?debug=log',
+    'Record'  : SCRIPT + '?debug=rec'
+};
 
 (function(in_w) {
 	var elems = in_w.document.getElementsByTagName('*');
@@ -132,6 +134,7 @@ CTRL.appendChild(READING);
 	for (var prop in in_debugs) {
 		var button = document.createElement('BUTTON');
 		button.textContent = prop;
+		button.className = 'canDebug';
 		button.addEventListener('click', (function(in_script) {
 			return function(e) {
 				ajax.send(in_script, function(in_status, in_response) {
@@ -143,12 +146,7 @@ CTRL.appendChild(READING);
 		})(in_debugs[prop]), false);
 		CTRL.appendChild(button);
 	}
-})({
-	'log (C)'	: D1,
-	'log (TR)'	: D2,
-	'log (all)'	: D3,
-	'rec'		: D4
-});
+})(DEBUG);
 
 var ITEMLIST = document.createElement('TABLE');
 VIEW.appendChild(ITEMLIST);
@@ -193,10 +191,10 @@ function reading(in_sw)
 {
 	if (in_sw) {
 		READING.disabled = false;
-		READING.className = 'enabled';
+		READING.className = 'canAbort';
 	} else {
 		READING.disabled = true;
-		READING.className = 'disabled';
+		READING.className = 'canNotAbort';
 	}
 }
 
@@ -219,7 +217,7 @@ function callback(in_status, in_response)
 }
 
 reading(true);
-ajax.send(Q1, callback);
+ajax.send(QUERY, callback);
 
 </script>
 <style type='text/css'>
@@ -227,32 +225,52 @@ ajax.send(Q1, callback);
 BUTTON {
 	padding: 3px;
 	border: solid 1px gray;
-	background: -moz-linear-gradient(top, silver, gray);
-	background: -webkit-gradient(linear, left top, left bottom, from(silver), to(gray));
+	background: -moz-linear-gradient(top, white, silver);
+	background: -webkit-gradient(linear, left top, left bottom, from(white), to(silver));
 	border-radius: 3px;
 
 }
-BUTTON:hover {
-	background: -moz-linear-gradient(top, white, silver);
-	background: -webkit-gradient(linear, left top, left bottom, from(white), to(silver));
+BUTTON.canDebug:hover, BUTTON.canAbort:hover {
+	background: -moz-linear-gradient(top, #ffff99, #999933);
+	background: -webkit-gradient(linear, left top, left bottom, from(#ffff99), to(#999933));
 }
 @-webkit-keyframes reading {
 	0% {
-		border: solid 1px yellow;
+		border-bottom-color: gray;
+		border-left-color: yellow;
 	}
-	100% {
-		border: solid 1px red;
+	25% {
+		border-left-color: gray;
+		border-top-color: yellow;
+	}
+	50% {
+		border-top-color: gray;
+		border-right-color: yellow;
+	}
+	75% {
+		border-right-color: gray;
+		border-bottom-color: yellow;
 	}
 }
 @-moz-keyframes reading {
 	0% {
-		border: solid 1px yellow;
+		border-bottom-color: gray;
+		border-left-color: yellow;
 	}
-	100% {
-		border: solid 1px red;
+	25% {
+		border-left-color: gray;
+		border-top-color: yellow;
+	}
+	50% {
+		border-top-color: gray;
+		border-right-color: yellow;
+	}
+	75% {
+		border-right-color: gray;
+		border-bottom-color: yellow;
 	}
 }
-BUTTON.enabled {
+BUTTON.canAbort {
 	-webkit-animation-name: reading;
 	-webkit-animation-timing-function: linear;
 	-webkit-animation-iteration-count: infinite;
@@ -263,6 +281,7 @@ BUTTON.enabled {
 	-moz-animation-duration: 1s;
 }
 TEXTAREA {
+	margin-top: 3px;
 	width: 100%;
 	height: 80%;
 	border: solid 1px silver;
@@ -271,10 +290,12 @@ A {
 	text-decoration: none;
 	color: blue;
 }
-TABLE, TD {
+TABLE {
+	margin-top: 3px;
 	border-collapse: collapse;
 }
 TD {
+	border-collapse: collapse;
 	border: solid 1px silver;
 	padding: 3px;
 	max-width: 1000px;
