@@ -577,7 +577,7 @@ class CHttpRequestPool
 				'chttp'  => $in_chttp,
 				'method' => $in_method,
 				'entity' => $in_entity,
-				'mtime' => -1,
+				'utime' => -1,
 				'state'  => POOL_ESTATE_DEFAULT));
 		return count($this->_pool);
 	}
@@ -622,7 +622,7 @@ class CHttpRequestPool
 						case CHTTP_RCEVRESPONSE_DONE :
 						default :
 							$iosleep = FALSE;
-							$e['mtime'] = microtime(TRUE) - $start;
+							$e['utime'] = microtime(TRUE) - $start;
 							$e['state'] = POOL_ESTATE_DONE;
 							$finished++;
 							break;
@@ -659,7 +659,7 @@ class CHttpRequestPool
 	}
 
 	function getTimeRecord($in_url) {
-		return $this->getRequest($in_url, 'mtime');
+		return $this->getRequest($in_url, 'utime');
 	}
 
 	function getFinishedRequests() {
