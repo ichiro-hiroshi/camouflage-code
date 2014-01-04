@@ -341,8 +341,8 @@ function updateTimeRecord($in_rec)
 	} else {
 		$rec = array();
 	}
-	foreach ($in_rec as $url => $mtime) {
-		$rec[$url] = $mtime;
+	foreach ($in_rec as $url => $utime) {
+		$rec[$url] = $utime;
 	}
 	if (@file_put_contents(RECORD, serialize($rec))) {
 		return TRUE;
@@ -471,12 +471,12 @@ function priorUrls($in_threshold = 2)
 	}
 	$urls = array();
 	$min = array('sec' => 99, 'url' => NULL);
-	foreach ($tr as $url => $mtime) {
-		if ($mtime < $in_threshold) {
+	foreach ($tr as $url => $utime) {
+		if ($utime < $in_threshold) {
 			array_push($urls, $url);
 		}
-		if ($mtime < $min['sec']) {
-			$min['sec'] = $mtime;
+		if ($utime < $min['sec']) {
+			$min['sec'] = $utime;
 			$min['url'] = $url;
 		}
 	}
