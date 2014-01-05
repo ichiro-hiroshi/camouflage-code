@@ -1,0 +1,204 @@
+<div id='view'></div>
+<script>
+
+Array.prototype.random = function() {
+	return this[Math.floor(Math.random() * this.length)];
+};
+
+var colorUtil = {
+	_rgb : {'r' : 1, 'g' : 3, 'b' : 5},
+	_reg : (new RegExp('^#[0-9ABCDEF]{6}$', 'i')),
+	_get : function(in_col16, in_rgb) {
+		var c16 = '00';
+		if (this._reg.test(in_col16)) {
+			c16 = in_col16.substr(this._rgb[in_rgb], 2);
+		}
+		return Number('0x' + c16);
+	},
+	_set : function(in_col16, in_diffs) {
+		var ret = '#';
+		for (var rgb in this._rgb) {
+			var c = this._get(in_col16, rgb);
+			if (in_diffs[rgb]) {
+				c += in_diffs[rgb];
+			}
+			ret += Math.min(255, Math.max(0, c)).toString(16);
+		}
+		return ret;
+	},
+	hash : function(in_col16, in_var) {
+		var diffs = {};
+		for (var rgb in this._rgb) {
+			diffs[rgb] = Math.round((0.5 - Math.random()) * in_var * 2);
+		}
+		return this._set(in_col16, diffs);
+	},
+	bright : function(in_col16, in_diff) {
+		var diffs = {};
+		for (var rgb in this._rgb) {
+			diffs[rgb] = in_diff;
+		}
+		return this._set(in_col16, diffs);
+	}
+};
+
+function cPiece(in_baseColor)
+{
+	this._colStack = [colorUtil.hash(in_baseColor, this._conf.hashValue)];
+}
+
+cPiece.prototype = {
+	_conf : {
+		hashValue : 50,
+		frameRate : 20,
+		brightPerFrame : 20,
+	},
+	_bind : function(prop) {
+		return (function(self) {
+			return function() {
+				self[prop].apply(self);
+			};
+		})(this);
+	},
+	_org2high : function() {
+		var color = colorUtil.bright(this.color(), this._conf.brightPerFrame);
+		this._colStack.push(color);
+		if (color == '#ffffff') {
+			window.setTimeout(this._bind('_high2org'), this._conf.frameRate);
+		} else {
+			window.setTimeout(this._bind('_org2high'), this._conf.frameRate);
+		}
+	},
+	_high2org : function() {
+		this._colStack.pop();
+		if (this._colStack.length > 1) {
+			window.setTimeout(this._bind('_high2org'), this._conf.frameRate);
+		}
+	},
+	color : function() {
+		return this._colStack[this._colStack.length - 1];
+	},
+	highLight : function() {
+		this._org2high();
+	}
+};
+
+function cBelt(in_w, in_h, in_length, in_pixPer100msec)
+{
+	this._pieceRect = {
+		w : in_w,
+		h : in_h
+	};
+	this._beltLen = in_w * in_length;
+	this._timeStamp = -1;
+	this._pixPer100msec = in_pixPer100msec;
+	this._pieces = [];
+	for (var i = 0; i < in_length; i++) {
+		this._pieces.push(new cPiece(this._conf.baseColor));
+	}
+}
+
+cBelt.prototype = {
+	_conf : {
+		baseColor : '#003366',
+		interval : 100,
+		highLightRate : 0.03
+	},
+	_bind : function(prop) {
+		return (function(self) {
+			return function() {
+				self[prop].apply(self);
+			};
+		})(this);
+	},
+	_highLight : function() {
+		if (Math.random() > (1 - this._conf.highLightRate)) {
+			this._pieces.random().highLight();
+		}
+	},
+	draw : function(in_ctx, in_l, in_t) {
+		var move = Math.floor(this._pixPer100msec * ((+ new Date()) - this._timeStamp) / 100);
+		/*
+			<----+----+----+----> : this._beltLen
+			<------------>        : len1 (length)
+			          <-->        : len2 (length)
+			<----+---->           : cnt (count of this._pieceRect.w)
+		*/
+		var len1 = move % this._beltLen;
+		var len2 = len1 % this._pieceRect.w;
+		var cnt = (len1 - len2) / this._pieceRect.w;
+		for (var i = 0; i < this._pieces.length; i++) {
+			in_ctx.fillStyle = this._pieces[i].color();
+			var left = in_l;
+			if (i < cnt) {
+				/* start : (this._beltLen - len1) */
+				left += (this._beltLen - len1) + (i * this._pieceRect.w);
+				in_ctx.fillRect(left, in_t, this._pieceRect.w, this._pieceRect.h);
+			} else if (i == cnt) {
+				/* start : 0 & (this._beltLen - len2) */
+				in_ctx.fillRect(left, in_t, this._pieceRect.w - len2, this._pieceRect.h);
+				left += (this._beltLen - len2);
+				in_ctx.fillRect(left, in_t, len2, this._pieceRect.h);
+			} else {
+				/* start : len2 */
+				left += (this._pieceRect.w - len2) + ((i - cnt - 1) * this._pieceRect.w);
+				in_ctx.fillRect(left, in_t, this._pieceRect.w, this._pieceRect.h);
+			}
+		}
+	},
+	start : function() {
+		this._timeStamp = (+ new Date());
+		window.setInterval(this._bind('_highLight'), this._conf.interval);
+	}
+};
+
+var cMirrorBall = {
+	_bh : -1,
+	_mw : -1,
+	_mh : -1,
+	_belts : [],
+	create : function(in_w, in_h, in_wCnt, in_hCnt) {
+		this._bh = in_h;
+		this._mw = in_w * in_wCnt;
+		this._mh = in_h * in_hCnt;
+		for (var i = 0; i < in_hCnt; i++) {
+			var belt = new cBelt(in_w, in_h, in_wCnt, in_hCnt - Math.abs(in_hCnt / 2 - i));
+			belt.start();
+			this._belts.push(belt);
+		}
+	},
+	draw : function(in_ctx, in_l, in_t) {
+		for (var i = 0; i < this._belts.length; i++) {
+			this._belts[i].draw(in_ctx, in_l, in_t + (this._bh * i));
+		}
+	}
+};
+
+
+canvas = document.createElement('CANVAS');
+canvas.width  = 500;
+canvas.height = 500;
+document.getElementById('view').appendChild(canvas);
+
+var ctx = canvas.getContext('2d');
+
+
+var b = cMirrorBall.create(10, 10, 20, 20);
+
+function render()
+{
+	requestAnimationFrame(render);
+	cMirrorBall.draw(ctx, 5, 5);
+}
+
+render();
+
+/*
+ctx.fillStyle = "red";
+ctx.fillRect(10, 10, 40, 30);
+*/
+
+
+
+</script>
+
