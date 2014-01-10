@@ -23,7 +23,7 @@ var colorUtil = {
 				c += in_diffs[rgb];
 			}
 			var s = Math.min(255, Math.max(0, c)).toString(16);
-			if (s.length == 1) {
+			if (c < 0x10) {
 				s = '0' + s;
 			}
 			ret += s;
@@ -55,7 +55,7 @@ cPiece.prototype = {
 	_conf : {
 		hashValue : 50,
 		frameRate : 20,
-		brightPerFrame : 80,
+		brightPerFrame : 50,
 	},
 	_bind : function(prop) {
 		return (function(self) {
@@ -104,8 +104,8 @@ function cBelt(in_w, in_h, in_wCnt, in_pixPer100msec)
 
 cBelt.prototype = {
 	_conf : {
-		baseColor : '#003366',
-		interval : 200,
+		baseColor : '#000066',
+		interval : 150,
 		highLightRate : 0.1
 	},
 	_bind : function(prop) {
@@ -121,7 +121,7 @@ cBelt.prototype = {
 		}
 	},
 	draw : function(in_ctx, in_l, in_t) {
-		var move = Math.floor(this._pixPer100msec * ((+ new Date()) - this._timeStamp) / 100);
+		var move = Math.floor(this._pixPer100msec * ((+ new Date()) - this._timeStamp) / 500);
 		/*
 			<----+----+----+----> : this._beltLen
 			<------------>        : len1 (length)
@@ -194,12 +194,12 @@ document.getElementById('view').appendChild(canvas);
 
 var ctx = canvas.getContext('2d');
 
-cMirrorBall.create(8, 8, 15, 15);
+cMirrorBall.create(10, 10, 10, 10);
 
 function render()
 {
 	requestAnimationFrame(render);
-	cMirrorBall.draw(ctx, 5, 5);
+	cMirrorBall.draw(ctx, 0, 0);
 }
 
 render();
