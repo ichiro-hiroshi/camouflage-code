@@ -55,7 +55,7 @@ cPiece.prototype = {
 	_conf : {
 		hashValue : 50,
 		frameRate : 20,
-		brightPerFrame : 50,
+		brightPerFrame : 70,
 	},
 	_bind : function(prop) {
 		return (function(self) {
@@ -105,8 +105,8 @@ function cBelt(in_w, in_h, in_wCnt, in_pixPer100msec)
 cBelt.prototype = {
 	_conf : {
 		baseColor : '#000066',
-		interval : 150,
-		highLightRate : 0.1
+		interval : 350,
+		highLightRate : 0.05
 	},
 	_bind : function(prop) {
 		return (function(self) {
@@ -121,7 +121,7 @@ cBelt.prototype = {
 		}
 	},
 	draw : function(in_ctx, in_l, in_t) {
-		var move = Math.floor(this._pixPer100msec * ((+ new Date()) - this._timeStamp) / 500);
+		var move = Math.floor(this._pixPer100msec * ((+ new Date()) - this._timeStamp) / 100);
 		/*
 			<----+----+----+----> : this._beltLen
 			<------------>        : len1 (length)
@@ -166,23 +166,36 @@ var cMirrorBall = {
 		this._mw = in_w * in_wCnt;
 		this._mh = in_h * in_hCnt;
 		for (var i = 0; i < in_hCnt; i++) {
-			var belt = new cBelt(in_w, in_h, in_wCnt, in_hCnt - Math.abs(in_hCnt / 2 - i));
+			var pixPer100msec = Math.floor(Math.pow(in_hCnt - Math.abs(in_hCnt / 2 - i), 2) / 50);
+			var belt = new cBelt(in_w, in_h, in_wCnt, pixPer100msec);
 			belt.start();
 			this._belts.push(belt);
 		}
 	},
 	draw : function(in_ctx, in_l, in_t) {
+		/* (1) */
 		in_ctx.beginPath();
 		in_ctx.rect(0, 0, this._mw, this._mh);
 		in_ctx.fillStyle = '#000000';
 		in_ctx.fill();
+		/* (2) */
 		in_ctx.beginPath();
-		var r = Math.min(this._mw, this._mh) / 2;
-		in_ctx.arc(r, r, r, 0, Math.PI * 2, false);
+		var edge = Math.min(this._mw, this._mh);
+		var r1 = edge / 2;
+		in_ctx.arc(in_l + r1, in_t + r1, r1, 0, Math.PI * 2, false);
 		in_ctx.clip();
 		for (var i = 0; i < this._belts.length; i++) {
 			this._belts[i].draw(in_ctx, in_l, in_t + (this._bh * i));
 		}
+		/* (3) */
+		in_ctx.beginPath();
+		var r2 = edge / 3;
+		in_ctx.arc(in_l + r2, in_t + r2, r2, 0, Math.PI * 2, false);
+		var gradient = in_ctx.createRadialGradient(in_l + r2, in_t + r2, 0, in_l + r2, in_t + r2, r2);
+		gradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+		gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+		in_ctx.fillStyle = gradient;
+		in_ctx.fill();
 	}
 };
 
@@ -191,18 +204,18 @@ canvas = document.createElement('CANVAS');
 canvas.width  = 500;
 canvas.height = 500;
 document.getElementById('view').appendChild(canvas);
-
 var ctx = canvas.getContext('2d');
-
-cMirrorBall.create(10, 10, 10, 10);
+cMirrorBall.create(6, 6, 15, 15);
 
 function render()
 {
 	requestAnimationFrame(render);
-	cMirrorBall.draw(ctx, 0, 0);
+	cMirrorBall.draw(ctx, 10, 10);
 }
 
 render();
 
 </script>
+
+
 
