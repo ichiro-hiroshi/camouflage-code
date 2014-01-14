@@ -48,14 +48,15 @@ var colorUtil = {
 
 function cPiece(in_baseColor)
 {
-	this._colStack = [colorUtil.hash(in_baseColor, this._conf.hashValue)];
+	this._color = colorUtil.hash(in_baseColor, this._conf.hashValue);
+	this._brightStart = -1;
+	this._inHighLight = false;
 }
 
 cPiece.prototype = {
 	_conf : {
 		hashValue : 50,
-		frameRate : 20,
-		brightPerFrame : 70,
+		brightInterval : 200,
 	},
 	_bind : function(prop) {
 		return (function(self) {
@@ -64,26 +65,25 @@ cPiece.prototype = {
 			};
 		})(this);
 	},
-	_org2high : function() {
-		var color = colorUtil.bright(this.color(), this._conf.brightPerFrame);
-		this._colStack.push(color);
-		if (color == '#ffffff') {
-			window.setTimeout(this._bind('_high2org'), this._conf.frameRate);
-		} else {
-			window.setTimeout(this._bind('_org2high'), this._conf.frameRate);
-		}
-	},
-	_high2org : function() {
-		this._colStack.pop();
-		if (this._colStack.length > 1) {
-			window.setTimeout(this._bind('_high2org'), this._conf.frameRate);
-		}
-	},
 	color : function() {
-		return this._colStack[this._colStack.length - 1];
+		if (!this._inHighLight) {
+			return this._color;
+		}
+		var ms = (+ new Date()) - this._brightStart;
+		if (ms < this._conf.brightInterval) {
+			var half = this._conf.brightInterval / 2;
+			var bright = Math.min(255, Math.floor((half - Math.abs(ms - half)) / half * 255));
+			return colorUtil.bright(this._color, bright);
+		} else {
+			this._inHighLight = false;
+			return this._color;
+		}
 	},
 	highLight : function() {
-		this._org2high();
+		if (!this._inHighLight) {
+			this._inHighLight = true;
+			this._brightStart = (+ new Date());
+		}
 	}
 };
 
@@ -105,8 +105,8 @@ function cBelt(in_w, in_h, in_wCnt, in_pixPer100msec)
 cBelt.prototype = {
 	_conf : {
 		baseColor : '#000066',
-		interval : 350,
-		highLightRate : 0.05
+		interval : 200,
+		highLightRate : 0.1
 	},
 	_bind : function(prop) {
 		return (function(self) {
@@ -205,7 +205,7 @@ canvas.width  = 500;
 canvas.height = 500;
 document.getElementById('view').appendChild(canvas);
 var ctx = canvas.getContext('2d');
-cMirrorBall.create(6, 6, 15, 15);
+cMirrorBall.create(8, 8, 15, 15);
 
 function render()
 {
