@@ -1,0 +1,546 @@
+<button id='ctrl'> stop / restart </button>
+<div id='view' style='width: 100%; height: 100%;'></div>
+<script>
+
+var gMap = {
+	_w : 33,
+	_h : 33,
+	_dat : [],
+	_areas : [],
+	_default : -1,
+	_inMap : function(in_x, in_y) {
+		if ((in_x < 0) || (this._w <= in_x)) {
+			return false;
+		}
+		if ((in_y < 0) || (this._h <= in_y)) {
+			return false;
+		}
+		return true;
+	},
+	_arround : function(in_x, in_y) {
+		var cand = [
+			[in_x - 1, in_y - 1],	[in_x + 0, in_y - 1],	[in_x + 1, in_y - 1],
+			[in_x - 1, in_y + 0],							[in_x + 1, in_y + 0],
+			[in_x - 1, in_y + 1],	[in_x + 0, in_y + 1],	[in_x + 1, in_y + 1]
+		];
+		var ret = [];
+		for (var i = 0; i < cand.length; i++) {
+			if (this._inMap(cand[i][0], cand[i][1])) {
+				ret.push(cand[i]);
+			}
+		}
+		return ret;
+	},
+	init : function(in_default) {
+		this._default = in_default;
+		for (var y = 0; y < this._h; y++) {
+			for (var x = 0; x < this._w; x++) {
+				this.set(x, y, in_default);
+			}
+		}
+	},
+	separate : function(in_x, in_y, in_val) {
+		return;
+	},
+	set : function(in_x, in_y, in_val) {
+		var index = in_y * this._w + in_x;
+		/* append */
+		if (!(in_val in this._areas)) {
+			this._areas[in_val] = [];
+		}
+		this._areas[in_val][index] = +new Date();
+		/* remove */
+		for (var no in this._areas) {
+			if ((index in this._areas[no]) && (no != in_val)) {
+				delete this._areas[no][index];
+				this.separate(in_x, in_y, no);
+				break;
+			}
+		}
+		/* map */
+		this._dat[index] = in_val;
+	},
+	get : function(in_x, in_y) {
+		return this._dat[in_y * this._w + in_x];
+	},
+	getTime : function(in_x, in_y) {
+		var index = in_y * this._w + in_x;
+		return this._areas[this._dat[index]][index];
+	},
+	getSize : function() {
+		return {w : this._w, h : this._h};
+	},
+	arroundInfo : function(in_x, in_y) {
+		var selfNo = this.get(in_x, in_y);
+		var pos = this._arround(in_x, in_y);
+		var ret = {
+			default : [],
+			friend : [],
+			target : []
+		};
+		for (var i = 0; i < pos.length; i++) {
+			var no = this.get(pos[i][0], pos[i][1]);
+			var append = {
+				x : pos[i][0],
+				y : pos[i][1]
+			};
+			if (no == this._default) {
+				ret.default.push(append);
+			} else if (no == selfNo) {
+				ret.friend.push(append);
+			} else {
+				if ((typeof ret.target[no]) == 'undefined') {
+					ret.target[no] = [append];
+				} else {
+					ret.target[no].push(append);
+				}
+			}
+		}
+		return ret;
+	},
+	edgeSet : function(in_no, in_max, in_sampling) {
+		var max = (in_max > 0) ? in_max : this._w * this._h;
+		var edge = [];
+		AREA_LOOP :
+		for (var index in this._areas[in_no]) {
+			if ((Math.random() * in_sampling) > 1 && (edge.length > 0)) {
+				continue;
+			}
+			var x = index % this._w;
+			var y = (index - x) / this._w;
+			var pos = this._arround(x, y);
+			ARROUND_LOOP :
+			for (var i = 0; i < pos.length; i++) {
+				if (this.get(pos[i][0], pos[i][1]) != in_no) {
+					edge.push({x : x, y : y, t : this._areas[in_no][index]});
+					if (max-- > 0) {
+						break ARROUND_LOOP;
+					} else {
+						break AREA_LOOP;
+					}
+				}
+			}
+		}
+		return edge;
+	},
+	allEdgeSet : function(in_no) {
+		return this.edgeSet(in_no, -1, 1);
+	},
+	randomEdgeSet : function(in_no) {
+		var cnt = 10;
+		var sampling = this.areas(in_no) / cnt;
+		return this.edgeSet(in_no, cnt, sampling);
+	},
+	areas : function(in_no) {
+		var cnt = 0;
+		for (var dummy in this._areas[in_no]) {
+			cnt++;
+		}
+		return cnt;
+	},
+	test : function() {
+		this.init(-1);
+		if (this._inMap(this._w, 0)) {
+			console.log('err');
+		}
+		if (this._inMap(0, this._h)) {
+			console.log('err');
+		}
+		if (!this._inMap(this._w - 1, 0)) {
+			console.log('err');
+		}
+		if (!this._inMap(0, this._h - 1)) {
+			console.log('err');
+		}
+		console.log('ok : _inMap');
+		if ((this._arround(0, 0)).length != 3) {
+			console.log('err');
+		}
+		console.log('ok : _arround');
+		this.init(-1);
+		var NO = 99;
+		this.set(0, 1, NO);
+		this.set(1, 0, NO);
+		if (this.arroundInfo(0, 0).target[NO].length != 2) {
+			console.log('err');
+		}
+		this.set(0, 0, NO);
+		if (this.arroundInfo(0, 0).friend.length != 2) {
+			console.log('err');
+		}
+		console.log('ok : arroundInfo');
+		this.set(1, 1, NO);
+		this.set(0, 2, NO);
+		this.set(2, 0, NO);
+		if (this.allEdgeSet(NO).length != 5) {
+			console.log('err' + this.allEdgeSet(NO).length);
+		}
+		console.log('ok : allEdgeSet');
+		if (this.randomEdgeSet(NO).length == 0) {
+			console.log('err');
+		}
+		console.log('ok : randomEdgeSet');
+
+		if (this.areas(NO) != 6) {
+			console.log('err');
+		}
+		console.log('ok : areas');
+		if (this.getTime(0, 0) > this.getTime(1, 1)) {
+			console.log('err');
+		}
+		console.log('ok : getTime');
+	}
+};
+
+var gGame = {
+	_canvas : null,
+	_player : [],
+	_state : {
+		stop : false,
+		callback : null
+	},
+	_const : {
+		NOPLAYER : -1,
+		CELLW : 6,
+		CELLH : 6
+	},
+	_bind : function(prop, arg) {
+		return (function(self) {
+			return function() {
+				self[prop].apply(self, [arg]);
+			};
+		})(this);
+	},
+	_getConf : function(in_w, in_h) {
+		var setting = [
+			null,
+			[
+				{
+					c : 'red',
+					x : 0,
+					y : 0
+				},
+				{
+					c : 'blue',
+					x : in_w - 1,
+					y : in_h - 1
+				}
+			],
+			[
+				{
+					c : 'red',
+					x : 0,
+					y : 0
+				},
+				{
+					c : 'green',
+					x : Math.ceil((in_w - 1) / 2),
+					y : Math.ceil((in_h - 1) / 2)
+				},
+				{
+					c : 'blue',
+					x : in_w - 1,
+					y : in_h - 1
+				}
+			],
+			[
+				{
+					c : 'red',
+					x : 0,
+					y : 0
+				},
+				{
+					c : 'green',
+					x : 0,
+					y : in_h - 1
+				},
+				{
+					c : 'yellow',
+					x : in_w - 1,
+					y : 0
+				},
+				{
+					c : 'blue',
+					x : in_w - 1,
+					y : in_h - 1
+				}
+			],
+			[
+				{
+					c : 'red',
+					x : 0,
+					y : 0
+				},
+				{
+					c : 'green',
+					x : 0,
+					y : in_h - 1
+				},
+				{
+					c : 'silver',
+					x : Math.ceil((in_w - 1) / 2),
+					y : Math.ceil((in_h - 1) / 2)
+				},
+				{
+					c : 'yellow',
+					x : in_w - 1,
+					y : 0
+				},
+				{
+					c : 'blue',
+					x : in_w - 1,
+					y : in_h - 1
+				}
+			]
+		];
+		var idx = Math.min((setting.length - 1), Math.max(0, this._player.length - 1));
+		return setting[idx];
+	},
+	pushPlayer : function(in_algo) {
+		this._player.push({algo : in_algo});
+	},
+	drawCell : function(in_ctx) {
+		var size = gMap.getSize();
+		for (var y = 0; y < size.h; y++) {
+			for (var x = 0; x < size.w; x++) {
+				var no = gMap.get(x, y);
+				if (no == this._const.NOPLAYER) {
+					continue;
+				}
+				in_ctx.fillStyle = this._player[no].color;
+				in_ctx.fillRect(
+					x * (this._const.CELLW + 1) + 1,
+					y * (this._const.CELLH + 1) + 1,
+					this._const.CELLW,
+					this._const.CELLH
+				);
+			}
+		}
+	},
+	drawInit : function(in_ctx) {
+		var size = gMap.getSize();
+		var one = {
+			w : this._const.CELLW + 1,
+			h : this._const.CELLH + 1
+		};
+		var all = {
+			w : size.w * one.w + 1,
+			h : size.h * one.h + 1
+		};
+		in_ctx.fillStyle = 'black';
+		in_ctx.fillRect(0, 0, all.w, all.h);
+		in_ctx.strokeStyle  = 'gray';
+		for (var y = 0; y < size.h + 1; y++) {
+			var cur = y * one.h;
+			in_ctx.beginPath();
+			in_ctx.moveTo(0, cur);
+			in_ctx.lineTo(all.w, cur);
+			in_ctx.stroke();
+		}
+		for (var x = 0; x < size.w + 1; x++) {
+			var cur = x * one.w;
+			in_ctx.beginPath();
+			in_ctx.moveTo(cur, 0);
+			in_ctx.lineTo(cur, all.h);
+			in_ctx.stroke();
+		}
+	},
+	createCanvas : function() {
+		var size = gMap.getSize();
+		this._canvas = document.createElement('CANVAS');
+		this._canvas.width  = size.w * (this._const.CELLW + 1) + 1;
+		this._canvas.height = size.h * (this._const.CELLH + 1) + 1;
+	},
+	attack : function(in_x1, in_y1, in_x2, in_y2) {
+		var f1 = gMap.arroundInfo(in_x1, in_y1).friend.length + 1;
+		var f2 = gMap.arroundInfo(in_x2, in_y2).friend.length + 1;
+		var weight = Math.max(1, (gMap.getTime(in_x1, in_y1) - gMap.getTime(in_x2, in_y2)) / 10000);
+		return (Math.random() * f1 * weight > Math.random() * f2);
+	},
+	goAhead : function(in_no) {
+		var areas = gMap.areas(in_no);
+		if (areas < 1) {
+			this.controlTurn(in_no, false);
+			return;
+		}
+		var player = this._player[in_no];
+		var src = player.algo(in_no, areas);
+		var info = gMap.arroundInfo(src.x, src.y);
+		for (var i = 0; i < info.default.length; i++) {
+			gMap.set(info.default[i].x, info.default[i].y, in_no);
+		}
+		ATTACK_LOOP :
+		for (var no in info.target) {
+			for (var i = 0; i < info.target[no].length; i++) {
+				var dst = info.target[no][i];
+				if (this.attack(src.x, src.y, dst.x, dst.y)) {
+					/* Win */
+					gMap.set(dst.x, dst.y, in_no);
+				} else {
+					/* Lose */
+					gMap.set(src.x, src.y, no);
+					break ATTACK_LOOP;
+				}
+			}
+		}
+		this.controlTurn(in_no, true);
+	},
+	controlTurn : function(in_no, in_redraw) {
+		var size = gMap.getSize();
+		if (gMap.areas(in_no) == size.w * size.h) {
+			alert('game-end');
+		} else {
+			var next_no = (in_no + 1) % this._player.length;
+			var delay = 20;
+			var callback = this._bind('goAhead', next_no);
+			if (this._state.stop) {
+				this._state.callback = callback;
+			} else {
+		        window.setTimeout(callback, delay);
+			}
+		}
+		if (in_redraw) {
+			var ctx = this._canvas.getContext('2d');
+			this.drawCell(ctx);
+		}
+	},
+	stop : function() {
+		this._state.stop = true;
+	},
+	restart : function() {
+		this._state.stop = false;
+		(this._state.callback)();
+	},
+	start : function() {
+		gMap.init(this._const.NOPLAYER);
+		this.createCanvas();
+		var size = gMap.getSize();
+		var conf = this._getConf(size.w, size.h);
+		for (var i = 0; i < this._player.length; i++) {
+			gMap.set(conf[i].x, conf[i].y, i);
+			this._player[i].color = conf[i].c;
+		}
+		var ctx = this._canvas.getContext('2d');
+		this.drawInit(ctx);
+		this.controlTurn(0, true);
+		return this._canvas;
+	},
+	test : function() {
+		for (var i = 0; i < 4; i++) {
+			this.pushPlayer(null);
+			console.log(i);
+			console.log(this._getConf(10, 10));
+		}
+		document.getElementById('view').appendChild(this.start());
+		while (!this.attack(0, 0, 1, 1)) {
+			console.log('attack');
+		}
+	}
+};
+
+</script>
+<script>
+
+var USE_RANDOM = 10;
+
+function sample_small(in_no, in_areas)
+{
+	var pos = (in_areas > USE_RANDOM) ? gMap.randomEdgeSet(in_no) : gMap.edgeSet(in_no, -1);
+	pos.sort(function(p1, p2) {
+		return (p1.t - p2.t);
+	});
+	return pos[0];
+}
+
+function sample_large(in_no, in_areas)
+{
+	var pos = (in_areas > USE_RANDOM) ? gMap.randomEdgeSet(in_no) : gMap.edgeSet(in_no, -1);
+	pos.sort(function(p1, p2) {
+		return (p2.t - p1.t);
+	});
+	return pos[0];
+}
+
+function sample_random(in_no, in_areas)
+{
+	var pos = (in_areas > USE_RANDOM) ? gMap.randomEdgeSet(in_no) : gMap.edgeSet(in_no, -1);
+	return pos[Math.floor(Math.random() * pos.length)];
+}
+
+function sample_edge(in_no, in_areas)
+{
+	var size = gMap.getSize();
+	var center = {
+		x : Math.ceil(size.w / 2),
+		y : Math.ceil(size.h / 2)
+	};
+	var pos = (in_areas > USE_RANDOM) ? gMap.randomEdgeSet(in_no) : gMap.edgeSet(in_no, -1);
+	var nearest = {
+		pos : null,
+		distance : Number.NEGATIVE_INFINITY
+	};
+	for (var i = 0; i < pos.length; i++) {
+		var distance = Math.pow(pos[i].x - center.x, 2) + Math.pow(pos[i].y - center.y, 2);
+		if (distance > nearest.distance) {
+			nearest = {
+				pos : pos[i],
+				distance : distance
+			};
+		}
+	}
+	return nearest.pos;
+}
+
+function sample_center(in_no, in_areas)
+{
+	var size = gMap.getSize();
+	var center = {
+		x : Math.ceil(size.w / 2),
+		y : Math.ceil(size.h / 2)
+	};
+	var pos = (in_areas > USE_RANDOM) ? gMap.randomEdgeSet(in_no) : gMap.edgeSet(in_no, -1);
+	var nearest = {
+		pos : null,
+		distance : Number.POSITIVE_INFINITY
+	};
+	for (var i = 0; i < pos.length; i++) {
+		var distance = Math.pow(pos[i].x - center.x, 2) + Math.pow(pos[i].y - center.y, 2);
+		if (distance < nearest.distance) {
+			nearest = {
+				pos : pos[i],
+				distance : distance
+			};
+		}
+	}
+	return nearest.pos;
+}
+
+gGame.pushPlayer(sample_small);
+gGame.pushPlayer(sample_large);
+gGame.pushPlayer(sample_center);
+gGame.pushPlayer(sample_random);
+gGame.pushPlayer(sample_edge);
+
+document.getElementById('view').appendChild(gGame.start());
+document.getElementById('ctrl').addEventListener('click', function(e) {
+	if (typeof(e.target.state) == 'undefined') {
+		e.target.state = {};
+		e.target.state.stop = true;
+	} else {
+		if (e.target.state.stop) {
+			e.target.state.stop = false;
+		} else {
+			e.target.state.stop = true;
+		}
+	}
+	if (e.target.state.stop) {
+		gGame.stop();
+	} else {
+		gGame.restart();
+	}
+}, false);
+
+//gMap.test();
+//gGame.test();
+
+</script>
