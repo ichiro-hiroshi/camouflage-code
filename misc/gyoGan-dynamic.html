@@ -1,0 +1,218 @@
+<script>
+
+var MAX_STEP = 5;
+
+var gRatio = (function(in_max) {
+	/*
+		--				: 1/1				= 1
+		-- + --			: 1/3 + 2/3			= 1
+		-- + -- + --	: 1/7 + 2/7 + 4/7	= 1
+	*/
+	var cache = [null];
+	for (var step = 1; step < in_max; step++) {
+		cache[step] = {
+			len : [],
+			sumInc : [],
+			sumDec : []
+		}
+		var denom = 0;
+		for (var i = 0; i < step; i++) {
+			cache[step].len[i] = Math.pow(2, i);
+			denom = denom + cache[step].len[i];
+		}
+		for (var i = 0; i < step; i++) {
+			cache[step].len[i] /= denom;
+		}
+		for (var i = 0; i < step; i++) {
+			cache[step].sumInc[i] = 0;
+			cache[step].sumDec[i] = 0;
+			for (var j = 0; j < (i + 1); j++) {
+				cache[step].sumInc[i] += cache[step].len[j];
+				cache[step].sumDec[i] += cache[step].len[(step - 1) - j];
+			}
+		}
+	}
+	return cache;
+})(MAX_STEP);
+
+(function() {
+	var cases = {
+		'sumInc' : [1, 3, 7, 15],
+		'sumDec' : [8, 12, 14, 15]
+	};
+	for (var prop in cases) {
+		for (var i = 0; i < cases[prop].length; i++) {
+			console.log(gRatio[4][prop][i] * 15 == cases[prop][i]);
+		}
+	}
+})();
+
+function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
+{
+	/* src */
+	this.srcLen = in_srcLen;
+	var orgLen = in_dstOrgE - in_dstOrgS;
+	var dst2src = (in_srcLen - orgLen) / (in_dstLen - orgLen);
+	this.srcOrg = {
+		S : in_dstOrgS * dst2src,
+		E : in_dstOrgS * dst2src + orgLen
+	};
+	this.srcOrgB = [];
+	this.srcOrgA = [];
+	/* dst */
+	this.dstLen = in_dstLen;
+	this.dstOrg = {
+		S : in_dstOrgS,
+		E : in_dstOrgE
+	};
+	this.dstOrgB = [];
+	this.dstOrgA = [];
+	/* OrgB (Before) */
+	for (var step = 1; step < gRatio.length; step++) {
+		var minSrc = this.srcOrg.S * gRatio[step].len[0];
+		var minDst = this.dstOrg.S * (1 / step);
+		console.log('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
+		if (minSrc < minDst) {
+			console.log('... break');
+			break;
+		}
+		this.srcOrgB[0] = 0;
+		this.dstOrgB[0] = 0;
+		for (var i = 1; i < step; i++) {
+			this.srcOrgB[i] = this.srcOrg.S * gRatio[step].sumDec[(i - 1)];
+			this.dstOrgB[i] = this.dstOrg.S * (i / step);
+		}
+	}
+	/* OrgA (After) */
+	for (var step = 1; step < gRatio.length; step++) {
+		var minSrc = (this.srcLen - this.srcOrg.E) * gRatio[step].len[0];
+		var minDst = (this.dstLen - this.dstOrg.E) * (1 / step);
+		console.log('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
+		if (minSrc < minDst) {
+			console.log('... break');
+			break;
+		}
+		for (var i = 0; i < step; i++) {
+			this.srcOrgA[i] = this.srcOrg.E + (this.srcLen - this.srcOrg.E) * gRatio[step].sumInc[i];
+			this.dstOrgA[i] = this.dstOrg.E + (this.dstLen - this.dstOrg.E) * ((i + 1) / step);
+		}
+	}
+}
+
+cLineReduce.prototype = {
+	srcPosArr : function() {
+		return [].concat(this.srcOrgB, [this.srcOrg.S, this.srcOrg.E], this.srcOrgA);
+	},
+	dstPosArr : function() {
+		return [].concat(this.dstOrgB, [this.dstOrg.S, this.dstOrg.E], this.dstOrgA);
+	}
+};
+
+function test()
+{
+	var testData = {
+		srcLen  : 600,
+		dstLen  : 200,
+		dstOrgS : 45,
+		dstOrgE : 185,
+		step    : 2
+	};
+	var line = new cLineReduce(
+		testData.srcLen,
+		testData.dstLen,
+		testData.dstOrgS,
+		testData.dstOrgE,
+		testData.step
+	);
+	console.log(line);
+	/* utility */
+	var conf = {
+		margin : 20,
+		memory : 2
+	};
+	var drawLineUtil = (function(in_conf) {
+		return function(in_ctx, in_color, in_lineCnt, in_start, in_len) {
+			in_ctx.strokeStyle = in_color;
+			in_ctx.beginPath();
+			if (in_len > 0) {
+				in_ctx.moveTo(in_conf.margin + in_start, in_conf.margin * in_lineCnt);
+				in_ctx.lineTo(in_conf.margin + in_start + in_len, in_conf.margin * in_lineCnt);
+			} else {
+				in_ctx.moveTo(in_conf.margin + in_start, in_conf.margin * in_lineCnt - in_conf.memory);
+				in_ctx.lineTo(in_conf.margin + in_start, in_conf.margin * in_lineCnt + in_conf.memory);
+			}
+			in_ctx.stroke();
+		};
+	})(conf);
+	/* canvas */
+	var canvas = document.createElement('CANVAS');
+	canvas.width = testData.srcLen + conf.margin * 2;
+	canvas.height = conf.margin * 3;
+	document.write('<div></div>');
+	document.getElementsByTagName('DIV').item(0).appendChild(canvas);
+	ctx = canvas.getContext('2d');
+	/* src */
+	drawLineUtil(ctx, 'black', 1, 0, testData.srcLen);
+	var arr = line.srcPosArr();
+	for (var i = 0; i < arr.length; i++) {
+		drawLineUtil(ctx, 'green', 1, arr[i], 0);
+	}
+	/* dst */
+	drawLineUtil(ctx, 'black', 2, 0, testData.dstLen);
+	var arr = line.dstPosArr();
+	for (var i = 0; i < arr.length; i++) {
+		drawLineUtil(ctx, 'green', 2, arr[i], 0);
+	}
+}
+
+// test();
+
+var dGyoGan = {
+	orgSize : 0.5,
+	bind : function(prop) {
+		var args = null;
+		if (arguments.length > 1) {
+			args = Array.prototype.slice.call(arguments);
+			args.shift();
+		}
+		return (function(self, in_args) {
+			if (in_args) {
+				return function() {
+					self[prop].apply(self, in_args);
+				};
+			} else {
+				return function() {
+					self[prop].call(self);
+				};
+			}
+		})(this, args);
+	},
+	img : (function(in_fname) {
+		var elem = document.createElement('IMG');
+		elem.src = in_fname;
+		return elem;
+	})('45aki.jpg'),
+	canvas : (function() {
+		var elem = document.createElement('CANVAS');
+		elem.width = window.innerWidth;
+		elem.height = window.innerHeight;
+		return elem;
+	})(),
+	start : function() {
+		var hook = this.bind('reDraw', 0, 0);
+		window.addEventListener('resize', hook, false);
+		if (this.img.complete) {
+			(hook)();
+		} else {
+			this.img.addEventListener('load', hook, false);
+		}
+	},
+	reDraw : function(in_dx, in_dy) {
+		console.log(in_l + ' : ' + in_t);
+	}
+};
+
+dGyoGan.start();
+
+</script>
+
