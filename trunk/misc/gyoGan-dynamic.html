@@ -114,15 +114,13 @@ function test()
 		srcLen  : 600,
 		dstLen  : 200,
 		dstOrgS : 45,
-		dstOrgE : 185,
-		step    : 2
+		dstOrgE : 185
 	};
 	var line = new cLineReduce(
 		testData.srcLen,
 		testData.dstLen,
 		testData.dstOrgS,
-		testData.dstOrgE,
-		testData.step
+		testData.dstOrgE
 	);
 	console.log(line);
 	/* utility */
@@ -168,6 +166,7 @@ function test()
 // test();
 
 var dGyoGan = {
+	margin : 0.1,
 	orgSize : 0.5,
 	bind : function(prop) {
 		var args = null;
@@ -187,32 +186,87 @@ var dGyoGan = {
 			}
 		})(this, args);
 	},
-	img : (function(in_fname) {
-		var elem = document.createElement('IMG');
-		elem.src = in_fname;
-		return elem;
-	})('45aki.jpg'),
-	canvas : (function() {
-		var elem = document.createElement('CANVAS');
-		elem.width = window.innerWidth;
-		elem.height = window.innerHeight;
-		return elem;
-	})(),
-	start : function() {
-		var hook = this.bind('reDraw', 0, 0);
-		window.addEventListener('resize', hook, false);
-		if (this.img.complete) {
-			(hook)();
-		} else {
-			this.img.addEventListener('load', hook, false);
-		}
+	img : document.createElement('IMG'),
+	canvas : document.createElement('CANVAS'),
+	start : function(in_fname) {
+		this.img.src = in_fname;
+		this.img.addEventListener('load', this.bind('resetCanvas'), false);
+		window.addEventListener('resize', this.bind('resetCanvas'), false);
+		return this.canvas;
+	},
+	resetCanvas : function() {
+		this.canvas.width = Math.min(window.innerWidth * (1 - this.margin), this.img.width);
+		this.canvas.height = Math.min(window.innerHeight * (1 - this.margin), this.img.height);
+		this.reDraw(0, 0);
 	},
 	reDraw : function(in_dx, in_dy) {
-		console.log(in_l + ' : ' + in_t);
+		var dr = (1 - this.orgSize) / 2;
+		var dx = in_dx + dr * this.canvas.width;
+		var dy = in_dy + dr * this.canvas.height;
+		/* width */
+		var xLine = new cLineReduce(
+			this.img.width,
+			this.canvas.width,
+			dx,
+			dx + this.orgSize * this.canvas.width
+		);
+		/* height */
+		var yLine = new cLineReduce(
+			this.img.height,
+			this.canvas.height,
+			dy,
+			dy + this.orgSize * this.canvas.height
+		);
+		ySrcPos = yLine.srcPosArr();
+		xSrcPos = xLine.srcPosArr();
+		yDstPos = yLine.dstPosArr();
+		xDstPos = xLine.dstPosArr();
+		var ctx = this.canvas.getContext('2d');
+		for (var i = 0; i < ySrcPos.length - 1; i++) {
+			for (var j = 0; j < xSrcPos.length - 1; j++) {
+				/* src --> dst */
+				ctx.drawImage(this.img,
+					xSrcPos[j], ySrcPos[i], (xSrcPos[j + 1] - xSrcPos[j]), (ySrcPos[i + 1] - ySrcPos[i]),
+					xDstPos[j], yDstPos[i], (xDstPos[j + 1] - xDstPos[j]), (yDstPos[i + 1] - yDstPos[i]));
+			}
+		}
 	}
 };
 
-dGyoGan.start();
+document.write('<ins></ins>');
+document.getElementsByTagName('INS').item(0).appendChild(dGyoGan.start('45aki.jpg'));
+
+var gPosCache = {
+	x : 0,
+	y : 0,
+	d : (function() {
+		var arr = [];
+		arr[37] = {x : -1, y :  0};
+		arr[38] = {x :  0, y : -1};
+		arr[39] = {x :  1, y :  0};
+		arr[40] = {x :  0, y :  1};
+		return function(in_keyCode) {
+			if (in_keyCode in arr) {
+				return arr[in_keyCode];
+			}
+			return {x : 0, y : 0};
+		}
+	})(),
+	move : function(in_keyCode) {
+		var d = this.d(in_keyCode);
+		this.x += d.x;
+		this.y += d.y;
+		return {
+			x : this.x,
+			y : this.y
+		};
+	}
+};
+
+window.addEventListener('keydown', function(e) {
+	var pos = gPosCache.move(e.keyCode);
+	dGyoGan.reDraw(pos.x, pos.y);
+}, false);
 
 </script>
 
