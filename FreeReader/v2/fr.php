@@ -519,7 +519,9 @@ $RSS_LIST = array(
 	'http://www.jpcert.or.jp/rss/jpcert.rdf',
 	'http://adgang.jp/feed',
 	'http://markezine.jp/rss/new/20/index.xml',
-	'http://media.looops.net/feed/'
+	'http://media.looops.net/feed/',
+	'http://jser.info/rss',
+	'http://feeds.advertimes.com/adobata?format=xml'
 );
 
 INFO1("RSS_LIST : " . count($RSS_LIST));
