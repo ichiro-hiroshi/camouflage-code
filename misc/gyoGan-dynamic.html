@@ -2,6 +2,12 @@
 
 var MAX_STEP = 5;
 
+function DP(in_obj)
+{
+	return;
+	console.log(in_obj);
+}
+
 var gRatio = (function(in_max) {
 	/*
 		--				: 1/1				= 1
@@ -42,13 +48,30 @@ var gRatio = (function(in_max) {
 	};
 	for (var prop in cases) {
 		for (var i = 0; i < cases[prop].length; i++) {
-			console.log(gRatio[4][prop][i] * 15 == cases[prop][i]);
+			DP(gRatio[4][prop][i] * 15 == cases[prop][i]);
 		}
 	}
 })();
 
 function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 {
+	/*
+		|----|----|====|----|----|
+		^										: dstOrgB[0]
+		     ^									: dstOrgB[1]
+		          ^								: dstOrg.S
+		               ^						: dstOrg.E
+		                    ^					: dstOrgA[0]
+		                         ^				: dstOrgA[1]
+		|--------|-----|====|-----|--------|
+		^										: srcOrgB[0]
+		         ^								: srcOrgB[1]
+		               ^						: srcOrg.S
+		                    ^					: srcOrg.E
+		                          ^				: srcOrgA[0]
+	                                       ^	: srcOrgA[1]
+	*/
+
 	/* src */
 	this.srcLen = in_srcLen;
 	var orgLen = in_dstOrgE - in_dstOrgS;
@@ -71,9 +94,9 @@ function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 	for (var step = 1; step < gRatio.length; step++) {
 		var minSrc = this.srcOrg.S * gRatio[step].len[0];
 		var minDst = this.dstOrg.S * (1 / step);
-		console.log('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
+		DP('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
 		if (minSrc < minDst) {
-			console.log('... break');
+			DP('... break');
 			break;
 		}
 		this.srcOrgB[0] = 0;
@@ -87,9 +110,9 @@ function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 	for (var step = 1; step < gRatio.length; step++) {
 		var minSrc = (this.srcLen - this.srcOrg.E) * gRatio[step].len[0];
 		var minDst = (this.dstLen - this.dstOrg.E) * (1 / step);
-		console.log('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
+		DP('step : ' + step + ', (' + minSrc + ', ' + minDst + ')');
 		if (minSrc < minDst) {
-			console.log('... break');
+			DP('... break');
 			break;
 		}
 		for (var i = 0; i < step; i++) {
@@ -122,7 +145,7 @@ function test()
 		testData.dstOrgS,
 		testData.dstOrgE
 	);
-	console.log(line);
+	DP(line);
 	/* utility */
 	var conf = {
 		margin : 20,
@@ -201,6 +224,12 @@ var dGyoGan = {
 	},
 	reDraw : function(in_dx, in_dy) {
 		var dr = (1 - this.orgSize) / 2;
+		if (Math.abs(in_dx) > dr * this.canvas.width) {
+			return;
+		}
+		if (Math.abs(in_dy) > dr * this.canvas.height) {
+			return;
+		}
 		var dx = in_dx + dr * this.canvas.width;
 		var dy = in_dy + dr * this.canvas.height;
 		/* width */
@@ -233,40 +262,67 @@ var dGyoGan = {
 	}
 };
 
-document.write('<ins></ins>');
-document.getElementsByTagName('INS').item(0).appendChild(dGyoGan.start('45aki.jpg'));
-
-var gPosCache = {
-	x : 0,
-	y : 0,
-	d : (function() {
-		var arr = [];
-		arr[37] = {x : -1, y :  0};
-		arr[38] = {x :  0, y : -1};
-		arr[39] = {x :  1, y :  0};
-		arr[40] = {x :  0, y :  1};
-		return function(in_keyCode) {
-			if (in_keyCode in arr) {
-				return arr[in_keyCode];
-			}
-			return {x : 0, y : 0};
+var gDrag = {
+	evBind : function(prop) {
+		return (function(self) {
+			return function(in_event) {
+				self[prop].call(self, in_event);
+			};
+		})(this);
+	},
+	hook : null,
+	start : function(in_elem, in_hook) {
+		this.hook = in_hook;
+		var events = ['mousemove', 'mouseout', 'mousedown', 'mouseup'];
+		for (var i = 0; i < events.length; i++) {
+			in_elem.addEventListener(events[i], this.evBind(events[i]), false);
 		}
-	})(),
-	move : function(in_keyCode) {
-		var d = this.d(in_keyCode);
-		this.x += d.x;
-		this.y += d.y;
-		return {
-			x : this.x,
-			y : this.y
-		};
+	},
+	pos : {
+		curr : {
+			x : 0,
+			y : 0
+		},
+		drag : null
+	},
+	mousemove : function(in_event) {
+		if (this.pos.drag) {
+			var dx = this.pos.curr.x + in_event.x - this.pos.drag.x;
+			var dy = this.pos.curr.y + in_event.y - this.pos.drag.y;
+			(this.hook)(dx, dy);
+		}
+	},
+	mouseout : function(in_event) {
+		this.pos.curr.x = 0;
+		this.pos.curr.y = 0;
+		this.pos.drag = null;
+		(this.hook)(0, 0);
+	},
+	mousedown : function(in_event) {
+		if (!this.pos.drag) {
+			this.pos.drag = {
+				x : in_event.x,
+				y : in_event.y
+			};
+		}
+	},
+	mouseup : function(in_event) {
+		if (this.pos.drag) {
+			this.pos.curr.x = in_event.x - this.pos.drag.x;
+			this.pos.curr.y = in_event.y - this.pos.drag.y;
+			this.pos.drag = null;
+		}
 	}
 };
 
-window.addEventListener('keydown', function(e) {
-	var pos = gPosCache.move(e.keyCode);
-	dGyoGan.reDraw(pos.x, pos.y);
-}, false);
+var elem = dGyoGan.start('45aki.jpg');
+
+document.write('<ins></ins>');
+document.getElementsByTagName('INS').item(0).appendChild(elem);
+
+gDrag.start(elem, function(in_x, in_y) {
+	dGyoGan.reDraw(in_x, in_y);
+});
 
 </script>
 
