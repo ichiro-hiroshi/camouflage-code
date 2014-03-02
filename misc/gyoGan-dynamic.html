@@ -218,8 +218,8 @@ var dGyoGan = {
 		return this.canvas;
 	},
 	resetCanvas : function() {
-		this.canvas.width = Math.min(window.innerWidth * (1 - this.margin), this.img.width);
-		this.canvas.height = Math.min(window.innerHeight * (1 - this.margin), this.img.height);
+		this.canvas.width = Math.min(window.innerWidth * (1 - this.margin), this.img.width * 0.7);
+		this.canvas.height = Math.min(window.innerHeight * (1 - this.margin), this.img.height * 0.7);
 		this.reDraw(0, 0);
 	},
 	reDraw : function(in_dx, in_dy) {
@@ -287,8 +287,8 @@ var gDrag = {
 	},
 	mousemove : function(in_event) {
 		if (this.pos.drag) {
-			var dx = this.pos.curr.x + in_event.x - this.pos.drag.x;
-			var dy = this.pos.curr.y + in_event.y - this.pos.drag.y;
+			var dx = this.pos.curr.x + in_event.clientX - this.pos.drag.x;
+			var dy = this.pos.curr.y + in_event.clientY - this.pos.drag.y;
 			(this.hook)(dx, dy);
 		}
 	},
@@ -301,15 +301,15 @@ var gDrag = {
 	mousedown : function(in_event) {
 		if (!this.pos.drag) {
 			this.pos.drag = {
-				x : in_event.x,
-				y : in_event.y
+				x : in_event.clientX,
+				y : in_event.clientY
 			};
 		}
 	},
 	mouseup : function(in_event) {
 		if (this.pos.drag) {
-			this.pos.curr.x = in_event.x - this.pos.drag.x;
-			this.pos.curr.y = in_event.y - this.pos.drag.y;
+			this.pos.curr.x = in_event.clientX - this.pos.drag.x;
+			this.pos.curr.y = in_event.clientY - this.pos.drag.y;
 			this.pos.drag = null;
 		}
 	}
