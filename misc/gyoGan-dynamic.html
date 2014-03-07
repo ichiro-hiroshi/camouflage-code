@@ -1,21 +1,37 @@
 <script>
 
-var MAX_STEP = 5;
-
 function DP(in_obj)
 {
 	return;
 	console.log(in_obj);
 }
 
-var gRatio = (function(in_max) {
+var gWeight = {
+	firstValue : 1,
+	setting : [],
+	configure : function(in_inc, in_cnt) {
+		for (var i = 0; i < in_cnt; i++) {
+			this.setting.push(this.firstValue + in_inc * i);
+		}
+	},
+	get : function(in_level) {
+		return this.setting[in_level];
+	},
+	cnt : function() {
+		return this.setting.length;
+	}
+};
+
+gWeight.configure(0.2, 10);
+
+var gRatio = (function(in_cnt) {
 	/*
 		--				: 1/1				= 1
 		-- + --			: 1/3 + 2/3			= 1
 		-- + -- + --	: 1/7 + 2/7 + 4/7	= 1
 	*/
 	var cache = [null];
-	for (var step = 1; step < in_max; step++) {
+	for (var step = 1; step < in_cnt; step++) {
 		cache[step] = {
 			len : [],
 			sumInc : [],
@@ -23,7 +39,7 @@ var gRatio = (function(in_max) {
 		}
 		var denom = 0;
 		for (var i = 0; i < step; i++) {
-			cache[step].len[i] = Math.pow(2, i);
+			cache[step].len[i] = gWeight.get(i);
 			denom = denom + cache[step].len[i];
 		}
 		for (var i = 0; i < step; i++) {
@@ -39,19 +55,7 @@ var gRatio = (function(in_max) {
 		}
 	}
 	return cache;
-})(MAX_STEP);
-
-(function() {
-	var cases = {
-		'sumInc' : [1, 3, 7, 15],
-		'sumDec' : [8, 12, 14, 15]
-	};
-	for (var prop in cases) {
-		for (var i = 0; i < cases[prop].length; i++) {
-			DP(gRatio[4][prop][i] * 15 == cases[prop][i]);
-		}
-	}
-})();
+})(gWeight.cnt());
 
 function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 {
@@ -189,8 +193,12 @@ function test()
 // test();
 
 var dGyoGan = {
-	margin : 0.1,
-	orgSize : 0.5,
+	windowMargin : 0.1,
+	reduceMargin : {
+		w : -1,
+		h : -1
+	},
+	orgSize : 0.4,
 	bind : function(prop) {
 		var args = null;
 		if (arguments.length > 1) {
@@ -218,20 +226,22 @@ var dGyoGan = {
 		return this.canvas;
 	},
 	resetCanvas : function() {
-		this.canvas.width = Math.min(window.innerWidth * (1 - this.margin), this.img.width * 0.7);
-		this.canvas.height = Math.min(window.innerHeight * (1 - this.margin), this.img.height * 0.7);
+		this.canvas.width = Math.min(window.innerWidth * (1 - this.windowMargin), this.img.width * 0.7);
+		this.canvas.height = Math.min(window.innerHeight * (1 - this.windowMargin), this.img.height * 0.7);
+		var reduce = (1 - this.orgSize) / 2;
+		this.reduceMargin.w = reduce * this.canvas.width;
+		this.reduceMargin.h = reduce * this.canvas.height;
 		this.reDraw(0, 0);
 	},
 	reDraw : function(in_dx, in_dy) {
-		var dr = (1 - this.orgSize) / 2;
-		if (Math.abs(in_dx) > dr * this.canvas.width) {
+		if (Math.abs(in_dx) > this.reduceMargin.w) {
 			return;
 		}
-		if (Math.abs(in_dy) > dr * this.canvas.height) {
+		if (Math.abs(in_dy) > this.reduceMargin.h) {
 			return;
 		}
-		var dx = in_dx + dr * this.canvas.width;
-		var dy = in_dy + dr * this.canvas.height;
+		var dx = in_dx + this.reduceMargin.w;
+		var dy = in_dy + this.reduceMargin.h;
 		/* width */
 		var xLine = new cLineReduce(
 			this.img.width,
@@ -270,9 +280,13 @@ var gDrag = {
 			};
 		})(this);
 	},
-	hook : null,
+	hook : {
+		func : null,
+		fire : -1,
+		wait : 50
+	},
 	start : function(in_elem, in_hook) {
-		this.hook = in_hook;
+		this.hook.func = in_hook;
 		var events = ['mousemove', 'mouseout', 'mousedown', 'mouseup'];
 		for (var i = 0; i < events.length; i++) {
 			in_elem.addEventListener(events[i], this.evBind(events[i]), false);
@@ -289,14 +303,18 @@ var gDrag = {
 		if (this.pos.drag) {
 			var dx = this.pos.curr.x + in_event.clientX - this.pos.drag.x;
 			var dy = this.pos.curr.y + in_event.clientY - this.pos.drag.y;
-			(this.hook)(dx, dy);
+			var now = (+new Date());
+			if (now - this.hook.fire > this.hook.wait) {
+				this.hook.fire = now;
+				(this.hook.func)(dx, dy);
+			}
 		}
 	},
 	mouseout : function(in_event) {
 		this.pos.curr.x = 0;
 		this.pos.curr.y = 0;
 		this.pos.drag = null;
-		(this.hook)(0, 0);
+		(this.hook.func)(0, 0);
 	},
 	mousedown : function(in_event) {
 		if (!this.pos.drag) {
