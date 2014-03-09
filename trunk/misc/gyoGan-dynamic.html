@@ -349,7 +349,7 @@ var gDrag = {
 	hook : {
 		func : null,
 		fire : -1,
-		wait : 25
+		wait : 20
 	},
 	autoPosition : {
 		enable : false,
@@ -423,14 +423,41 @@ var gDrag = {
 	}
 };
 
+function getQueryParam(in_default)
+{
+	var ret = in_default;
+	if (!location.search) {
+		return ret;
+	}
+	var params = location.search.split('?')[1].split('&');
+	for (var i = 0; i < params.length; i++) {
+		var fv = params[i].split('=');
+		if (fv.length == 2) {
+			if (fv[0] in ret) {
+				if (typeof(ret[fv[0]]) == 'number') {
+					ret[fv[0]] = +fv[1];
+				} else {
+					ret[fv[0]] = fv[1];
+				}
+			}
+		}
+	}
+	return ret;
+}
+
 /*
 gRatio.test();
 test();
 */
 
-// for document setting
 gRatio.configure(0.4, 8);
-var elem = dGyoGan.start('45aki.jpg', 0.6, 0.2);
+var param = getQueryParam({
+	i : '45snobo.jpg',
+	w : 0.3,
+	h : 0.3
+});
+console.log(param);
+var elem = dGyoGan.start(param.i, param.w, param.h);
 
 document.write('<ins></ins>');
 document.getElementsByTagName('INS').item(0).appendChild(elem);
