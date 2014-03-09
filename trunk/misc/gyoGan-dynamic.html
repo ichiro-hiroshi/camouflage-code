@@ -137,8 +137,8 @@ function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 	var orgLen = in_dstOrgE - in_dstOrgS;
 	var dst2src = (in_srcLen - orgLen) / (in_dstLen - orgLen);
 	this.srcOrg = {
-		S : in_dstOrgS * dst2src,
-		E : in_dstOrgS * dst2src + orgLen
+		S : Math.ceil(in_dstOrgS * dst2src),
+		E : Math.ceil(in_dstOrgS * dst2src + orgLen)
 	};
 	this.srcOrgB = [];
 	this.srcOrgA = [];
@@ -162,8 +162,8 @@ function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 		this.srcOrgB[0] = 0;
 		this.dstOrgB[0] = 0;
 		for (var i = 1; i < step; i++) {
-			this.srcOrgB[i] = this.srcOrg.S * gRatio.getSumDec(step, (i - 1));
-			this.dstOrgB[i] = this.dstOrg.S * (i / step);
+			this.srcOrgB[i] = Math.ceil(this.srcOrg.S * gRatio.getSumDec(step, (i - 1)));
+			this.dstOrgB[i] = Math.ceil(this.dstOrg.S * (i / step));
 		}
 	}
 	/* OrgA (After) */
@@ -176,8 +176,8 @@ function cLineReduce(in_srcLen, in_dstLen, in_dstOrgS, in_dstOrgE)
 			break;
 		}
 		for (var i = 0; i < step; i++) {
-			this.srcOrgA[i] = this.srcOrg.E + (this.srcLen - this.srcOrg.E) * gRatio.getSumInc(step, i);
-			this.dstOrgA[i] = this.dstOrg.E + (this.dstLen - this.dstOrg.E) * ((i + 1) / step);
+			this.srcOrgA[i] = Math.ceil(this.srcOrg.E + (this.srcLen - this.srcOrg.E) * gRatio.getSumInc(step, i));
+			this.dstOrgA[i] = Math.ceil(this.dstOrg.E + (this.dstLen - this.dstOrg.E) * ((i + 1) / step));
 		}
 	}
 }
@@ -432,13 +432,14 @@ function getQueryParam(in_default)
 	var params = location.search.split('?')[1].split('&');
 	for (var i = 0; i < params.length; i++) {
 		var fv = params[i].split('=');
-		if (fv.length == 2) {
-			if (fv[0] in ret) {
-				if (typeof(ret[fv[0]]) == 'number') {
-					ret[fv[0]] = +fv[1];
-				} else {
-					ret[fv[0]] = fv[1];
-				}
+		if (fv.length < 2) {
+			continue;
+		}
+		if (fv[0] in ret) {
+			if (typeof(ret[fv[0]]) == 'number') {
+				ret[fv[0]] = +fv[1];
+			} else {
+				ret[fv[0]] = fv[1];
 			}
 		}
 	}
