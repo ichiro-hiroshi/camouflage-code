@@ -521,7 +521,8 @@ $RSS_LIST = array(
 	'http://markezine.jp/rss/new/20/index.xml',
 	'http://media.looops.net/feed/',
 	'http://jser.info/rss',
-	'http://feeds.advertimes.com/adobata?format=xml'
+	'http://feeds.advertimes.com/adobata?format=xml',
+	'http://sem-labo.net/blog/feed/'
 );
 
 INFO1("RSS_LIST : " . count($RSS_LIST));
