@@ -423,6 +423,62 @@ function responseFromCach($in_urls)
 	}
 }
 
+function replaceThumbnailcloudLink($in_parsed_feed)
+{
+	require_once('chttp.php');
+	$ret = array(
+		'time' => 0,
+		'feed' => array()
+	);
+	$cnt = 0;
+	$pool = new CHttpRequestPool(NULL, 0, 30);
+	foreach ($in_parsed_feed as $feedItem) {
+		if (strpos($feedItem['LINK'], 'http://pg.thumbnailcloud.net') === 0) {
+			$cnt++;
+			$pool->attach(new CHttp($feedItem['LINK']));
+		}
+		array_push($ret['feed'], $feedItem);
+	}
+	if ($cnt > 0) {
+		$pool->send();
+		for ($i = 0; $i < count($ret['feed']); $i++) {
+			$url = $ret['feed'][$i]['LINK'];
+			$http = $pool->getRequest($url);
+			$time = $pool->getTimeRecord($url);
+			if ($ret['time'] < $time) {
+				$ret['time'] = $time;
+			}
+			if ($http && (preg_match('/"http:\/\/b.hatena.ne.jp\/entry\/(http:[^"]+)"/', $http->getBody(), $m) == 1)) {
+				INFO2("replace thumbnailcloud : {$m[1]}");
+				$ret['feed'][$i]['LINK'] = $m[1];
+			} else {
+				INFO2("can not replace thumbnailcloud : {$ret['feed'][$i]['LINK']}");
+			}
+		}
+		INFO2("time : {$ret['time']}");
+	}
+	return $ret;
+}
+
+function thumbnailcloudTest()
+{
+	/*
+		http://pg.thumbnailcloud.net/data/1033345.aspx?from=rss
+			---> http://uzulla.hateblo.jp/entry/2014/03/10/023746
+	*/
+	$testdata = array(
+		array('LINK' => 'http://pg.thumbnailcloud.net/data/1033345.aspx?from=rss'),
+		array('LINK' => 'http://www.yahoo.co.jp/'),
+		array('LINK' => 'http://pg.thumbnailcloud.net/data/XXXXXXX.aspx?from=rss'),
+		array('LINK' => 'http://www.google.co.jp/'),
+		array('LINK' => 'http://pg.thumbnailcloud.net/data/1033345.aspx?from=rss')
+	);
+	print_r(replaceThumbnailcloudLink($testdata));
+	DP();
+}
+
+// thumbnailcloudTest();
+
 function responseFromNet($in_urls)
 {
 	require_once('chttp.php');
@@ -444,8 +500,10 @@ function responseFromNet($in_urls)
 		$rec[$url] = $pool->getTimeRecord($url);
 		$fresh = array_filter($parsed, 'filterChain');
 		if (count($fresh) > 0) {
-			array_push($ret, $fresh);
-			if (!@file_put_contents(url2cache($url), serialize($fresh))) {
+			$replaced = replaceThumbnailcloudLink($fresh);
+			array_push($ret, $replaced['feed']);
+			$rec[$url] += $replaced['time'];
+			if (!@file_put_contents(url2cache($url), serialize($replaced['feed']))) {
 				INFO2("can not update cahce");
 			}
 		} else {
