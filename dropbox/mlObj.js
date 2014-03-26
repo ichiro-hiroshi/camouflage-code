@@ -1,5 +1,137 @@
 
-var getCssText = (function() {
+String.prototype.trim = function() {
+	return this.replace(/^\s+|\s+$/g, '');
+}
+
+function cTextTree(in_srcText)
+{
+	this.srcText = in_srcText;
+	this.tree = this.compose(in_srcText);
+}
+
+cTextTree.prototype = {
+	metaPair : {
+		PAREN		: {O : '(', C : ')'},
+		BRACKET		: {O : '[', C : ']'},
+		BRACE		: {O : '{', C : '}'},
+		THAN		: {O : '<', C : '>'},
+		SQUOTATION	: {O : "'", C : "'"},
+		DQUOTATION	: {O : '"', C : '"'}
+	},
+	tree : null,
+	findPair : function(in_text) {
+		var cand = {
+			name : null,
+			pair : {
+				O : Number.POSITIVE_INFINITY,
+				C : Number.NEGATIVE_INFINITY
+			}
+		};
+		for (var name in this.metaPair) {
+			var pair = this.metaPair[name];
+			var O = in_text.indexOf(pair.O);
+			if (O == -1) {
+				continue;
+			}
+			/* todo : nested-case */
+			var C = in_text.indexOf(pair.C, O + 1);
+			if (C == -1) {
+				continue;
+			}
+			if ((O != C) && (cand.pair.O > O)) {
+				cand = {
+					name : name,
+					pair : {
+						O : O,
+						C : C
+					}
+				};
+			}
+		}
+		if (cand.name) {
+			return cand;
+		} else {
+			return null;
+		}
+	},
+	compose : function(in_text) {
+		var cand = this.findPair(in_text);
+		if (!cand) {
+			return [in_text.trim()];
+		} else {
+			var node = {
+				name : cand.name,
+				child : this.compose(in_text.substr(cand.pair.O + 1, (cand.pair.C - cand.pair.O) - 1))
+			};
+			var ret = [node];
+			if (cand.pair.O > 0) {
+				ret.unshift(in_text.substr(0, cand.pair.O).trim());
+			}
+			if (cand.pair.C < in_text.length - 1) {
+				ret = ret.concat(this.compose(in_text.substr(cand.pair.C + 1)));
+			}
+			return ret;
+		}
+	},
+	textContents : function() {
+		var _makeArray = function(in_nodes) {
+			var ret = [];
+			for (var i = 0; i < in_nodes.length; i++) {
+				if (typeof(in_nodes[i]) == 'string') {
+					ret.push(in_nodes[i]);
+				} else {
+					ret = ret.concat(_makeArray(in_nodes[i].child));
+				}
+			}
+			return ret;
+		};
+		return _makeArray(this.tree);
+	},
+	debugPrint : function() {
+		var _writeList = function(in_nodes) {
+			document.write('<ul>');
+			for (var i = 0; i < in_nodes.length; i++) {
+				if (typeof(in_nodes[i]) == 'string') {
+					document.write('<li>' + in_nodes[i] + '</li>');
+				} else {
+					document.write('<li>' + in_nodes[i].name);
+					_writeList(in_nodes[i].child);
+					document.write('</li>');
+				}
+			}
+			document.write('</ul>');
+		};
+		_writeList(this.tree);
+	}
+};
+
+function imgDataScheme(in_img)
+{
+	var canvas = document.createElement('CANVAS');
+	canvas.width = in_img.width;
+	canvas.height = in_img.height;
+	canvas.getContext('2d').drawImage(in_img,
+		0, 0, in_img.width, in_img.height,
+		0, 0, canvas.width, canvas.height);
+	return canvas.toDataURL();
+}
+
+HTMLImageElement.prototype.srcDataScheme = function() {
+	this.src = imgDataScheme(this);
+}
+
+function urlDataScheme(in_url, in_callback)
+{
+	var img = document.createElement('IMG');
+	img.src = in_url;
+	img.addEventListener('load', (function() {
+		return function(in_event) {
+			(in_callback)(imgDataScheme(img));
+		};
+	})(), false);
+}
+
+var computedCss = (function() {
 	var _cssProp = {
 		alignContent : '',
 		alignItems : '',
@@ -256,21 +388,35 @@ var getCssText = (function() {
 			this.iframe = null;
 		};
 	}
-	return function(in_elem) {
-		var dummy = new _cDummyElement(in_elem);
-		var s1 = _currentStyle(document, in_elem);
-		var s2 = dummy.currentStyle();
-		var cssText = [];
-		for (var cssDomProp in _cssProp) {
-			if (s1[cssDomProp] != s2[cssDomProp]) {
-				cssText.push(_cssProp[cssDomProp] + ': ' + s1[cssDomProp] + ';');
+	return {
+		loading : 0,
+		compose : function(in_elem, in_callback) {
+			var dummy = new _cDummyElement(in_elem);
+			var s1 = _currentStyle(document, in_elem);
+			var s2 = dummy.currentStyle();
+			var css = {};
+			for (var cssDomProp in _cssProp) {
+				if (s1[cssDomProp] == s2[cssDomProp]) {
+					continue;
+				}
+				css[_cssProp[cssDomProp]] = s1[cssDomProp];
+				var parsed = (new cTextTree(s1[cssDomProp])).textContents();
+				if (parsed[0] == 'url') {
+					this.loading++;
+					urlDataScheme(parsed[1], (function(self, in_cssProp) {
+						return function(in_dataScheme) {
+							css[in_cssProp] = 'url(' + in_dataScheme + ')';
+							if (--self.loading == 0) {
+								(in_callback)(css);
+							}
+						};
+					})(this, _cssProp[cssDomProp]));
+				}
 			}
-		}
-		dummy.delete();
-		if (cssText.length > 0) {
-			return cssText.join(' ');
-		} else {
-			return null;
+			dummy.delete();
+			if (this.loading == 0) {
+				(in_callback)(css);
+			}
 		}
 	};
 })();
@@ -297,7 +443,8 @@ function domNode2mlObj(in_node, in_filter)
 		var ml = {
 			_name : in_node.nodeName.toUpperCase(),
 			_attr : {},
-			_child : []
+			_child : [],
+			_ready : false
 		};
 		if (in_node.hasAttributes()) {
 			var nodes = in_node.attributes;
@@ -305,10 +452,18 @@ function domNode2mlObj(in_node, in_filter)
 				ml._attr[nodes.item(i).nodeName] = nodes.item(i).nodeValue;
 			}
 		}
-		var cssText = getCssText(in_node);
-		if (cssText) {
-			ml._attr.style = cssText;
-		}
+		computedCss.compose(in_node, (function(in_ml) {
+			return function(in_css) {
+				var cssText = [];
+				for (var prop in in_css) {
+					cssText.push(prop + ': ' + in_css[prop] + ';');
+				}
+				if (cssText.length > 0) {
+					in_ml._attr.style = cssText.join(' ');
+				}
+				in_ml._ready = true;
+			};
+		})(ml));
 		if (in_node.hasChildNodes()) {
 			var nodes = in_node.childNodes;
 			for(var i = 0; i < nodes.length; i++) {
@@ -354,15 +509,6 @@ function mlObj2domNode(in_ml, in_doc)
 	}
 }
 
-function conv2dataScheme(in_img)
-{
-	var canvas = document.createElement('CANVAS');
-	canvas.width = in_img.width;
-	canvas.height = in_img.height;
-	canvas.getContext('2d').drawImage(in_img, 0, 0, in_img.width, in_img.height, 0, 0, canvas.width, canvas.height);
-	return canvas.toDataURL();
-}
-
 function staticPageFilter(in_ml, in_node)
 {
 	switch (in_ml._name) {
@@ -372,7 +518,7 @@ function staticPageFilter(in_ml, in_node)
 		return null;
 	case 'IMG' :
 		if (in_ml._attr.src) {
-			in_ml._attr.src = conv2dataScheme(in_node);
+			in_ml._attr.src = imgDataScheme(in_node);
 		}
 		break;
 	default :
