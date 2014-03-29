@@ -5,7 +5,6 @@ String.prototype.trim = function() {
 
 function cTextTree(in_srcText)
 {
-	this.srcText = in_srcText;
 	this.tree = this.compose(in_srcText);
 }
 
@@ -19,6 +18,26 @@ cTextTree.prototype = {
 		DQUOTATION	: {O : '"', C : '"'}
 	},
 	tree : null,
+	findNestPos : function(in_text, in_pair, in_start) {
+		var nest = 0;
+		for (var pos = in_start; pos < in_text.length; pos++) {
+			switch (in_text.charAt(pos)) {
+			case in_pair.O :
+				nest++;
+				break;
+			case in_pair.C :
+				if (nest > 0) {
+					nest--;
+				} else {
+					return pos;
+				}
+				break;
+			default :
+				break;
+			}
+		}
+		return -1;
+	},
 	findPair : function(in_text) {
 		var cand = {
 			name : null,
@@ -29,21 +48,27 @@ cTextTree.prototype = {
 		};
 		for (var name in this.metaPair) {
 			var pair = this.metaPair[name];
-			var O = in_text.indexOf(pair.O);
-			if (O == -1) {
+			var o = in_text.indexOf(pair.O);
+			if (o == -1) {
 				continue;
 			}
-			/* todo : nested-case */
-			var C = in_text.indexOf(pair.C, O + 1);
-			if (C == -1) {
+			var c = in_text.indexOf(pair.C, o + 1);
+			if (c == -1) {
 				continue;
 			}
-			if ((O != C) && (cand.pair.O > O)) {
+			if (cand.pair.O > o) {
+				if (pair.O != pair.C) {
+					/* nested-case */
+					var pos = this.findNestPos(in_text, pair, o + 1);
+					if (pos >= 0) {
+						c = pos;
+					}
+				}
 				cand = {
 					name : name,
 					pair : {
-						O : O,
-						C : C
+						O : o,
+						C : c
 					}
 				};
 			}
@@ -74,34 +99,39 @@ cTextTree.prototype = {
 		}
 	},
 	textContents : function() {
-		var _makeArray = function(in_nodes) {
+		var _traverse = function(in_nodes) {
 			var ret = [];
 			for (var i = 0; i < in_nodes.length; i++) {
 				if (typeof(in_nodes[i]) == 'string') {
 					ret.push(in_nodes[i]);
 				} else {
-					ret = ret.concat(_makeArray(in_nodes[i].child));
+					ret = ret.concat(_traverse(in_nodes[i].child));
 				}
 			}
 			return ret;
 		};
-		return _makeArray(this.tree);
+		return _traverse(this.tree);
 	},
 	debugPrint : function() {
-		var _writeList = function(in_nodes) {
-			document.write('<ul>');
+		var _traverse = function(in_nodes) {
+			var ret = [];
+			ret.push('<ul>');
 			for (var i = 0; i < in_nodes.length; i++) {
 				if (typeof(in_nodes[i]) == 'string') {
-					document.write('<li>' + in_nodes[i] + '</li>');
+					ret.push('<li>');
+					ret.push(in_nodes[i]);
+					ret.push('</li>');
 				} else {
-					document.write('<li>' + in_nodes[i].name);
-					_writeList(in_nodes[i].child);
-					document.write('</li>');
+					ret.push('<li>');
+					ret.push(in_nodes[i].name);
+					ret = ret.concat(_traverse(in_nodes[i].child));
+					ret.push('</li>');
 				}
 			}
-			document.write('</ul>');
+			ret.push('</ul>');
+			return ret;
 		};
-		_writeList(this.tree);
+		document.write(_traverse(this.tree).join("\n"));
 	}
 };
 
@@ -531,6 +561,28 @@ function staticPageFilter(in_ml, in_node)
 		return in_ml;
 	}
 }
+
+functoin send(in_script, in_body, in_callback)
+{
+	var xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = (function(self, in_onload) {
+		return function() {
+			if (self.readyState == 4) {
+				(in_onload)(self.status, self.responseText);
+			}
+		}
+	})(xhr, in_callback);
+	var avoidCache = ((in_script.indexOf('?') > 0) ? '&r=' : '?r=') + Math.random();
+	xhr.open('POST', in_script + avoidCache);
+	xhr.send(in_body);
+}
+
+var mlObj = domNode2mlObj(document.body, staticPageFilter);
+window.setTimeout(function() {
+	var callback = function(in_status, in_response) {
+	};
+	send('', JSON.stringify(mlObj), callback);
+}, 1000);
 
 /*
 
