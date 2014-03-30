@@ -210,8 +210,8 @@ function reading(in_sw)
 	}
 }
 
-var clicked = {
-	storeData : function(in_url, in_date) {
+var urlStore = {
+	set : function(in_url, in_date) {
 		if (in_date.match(/([0-9]{4})([0-9]{2})([0-9]{2}) [0-9]{6}/)) {
 			var ts = +new Date((+RegExp.$1), (+RegExp.$2 - 1), (+RegExp.$3));
 		} else {
@@ -219,10 +219,10 @@ var clicked = {
 		}
 		localStorage.setItem(in_url, ts);
 	},
-	inStore : function(in_url) {
+	exist : function(in_url) {
 		return (localStorage.getItem(in_url) !== null);
 	},
-	deleteStoreBefore : function(in_days) {
+	deleteBeforeDays : function(in_days) {
 		var ts = (+new Date()) - in_days * 24 * 3600 * 1000;
 		var before = [];
 		for (var i = 0; i < localStorage.length; i++) {
@@ -240,36 +240,38 @@ var clicked = {
 	},
 	test : function() {
 		this.deleteAll();
-		console.log(this.inStore('url1') == false);
-		this.storeData('url1', '20990325 075009');
-		console.log(this.inStore('url1') == true);
-		this.storeData('url2', '10990330 075009');
-		console.log(this.inStore('url2') == true);
-		this.deleteStoreBefore(0);
-		console.log(this.inStore('url1') == true);
-		console.log(this.inStore('url2') == false);
+		console.log(this.exist('url1') == false);
+		this.set('url1', '20990325 075009');
+		console.log(this.exist('url1') == true);
+		this.set('url2', '10990330 075009');
+		console.log(this.exist('url2') == true);
+		this.deleteBeforeDays(0);
+		console.log(this.exist('url1') == true);
+		console.log(this.exist('url2') == false);
 	}
 };
 
-clicked.deleteStoreBefore(3);
+urlStore.deleteBeforeDays(3);
 
 function checkClick()
 {
 	var clickLink = function(in_a, in_store) {
 		var tr = in_a.ancestorElement('TR');
+		var cells = tr.getElementsByTagName('TD');
 		tr.style.backgroundColor = '#eeeeee';
+		cells[1].style.fontSize = 'xx-small';
+		cells[2].style.fontSize = 'xx-small';
 		if (in_store) {
-			var td = tr.getElementsByTagName('TD')[0];
-			clicked.storeData(in_a.href, td.textContent);
+			urlStore.set(in_a.href, cells[0].textContent);
 		}
 	};
 	var elems = document.getElementsByTagName('A');
 	for (var i = 0; i < elems.length; i++) {
 		var a = elems[i];
-		if (clicked.inStore(a.href)) {
+		if (urlStore.exist(a.href)) {
 			clickLink(a, false);
 		}
-		a.addEventListener('mousedown', (function() {
+		a.addEventListener('click', (function() {
 			return function(in_event) {
 				clickLink(in_event.target, true);
 			};
