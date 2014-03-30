@@ -366,7 +366,7 @@ function url2cache($in_url)
 	return DB_PATH . '/' . "{$parsed['host']}-" . md5($in_url) . '.txt';
 }
 
-define('LIFE', 3600 * 24 * 5);
+define('LIFE', 3600 * 24 * 3);
 
 function dateFilter($in_elem)
 {
