@@ -455,7 +455,8 @@ gRatio.configure(0.4, 8);
 var param = getQueryParam({
 	i : '45snobo.jpg',
 	w : 0.3,
-	h : 0.3
+	h : 0.3,
+	pull : 1
 });
 console.log(param);
 var elem = dGyoGan.start(param.i, param.w, param.h);
@@ -464,8 +465,14 @@ document.write('<ins></ins>');
 document.getElementsByTagName('INS').item(0).appendChild(elem);
 
 gDrag.start(elem, function(in_x, in_y) {
-	dGyoGan.reDraw(in_x, in_y);
+	if (param.pull) {
+		dGyoGan.reDraw(-in_x, -in_y);
+	} else {
+		dGyoGan.reDraw(in_x, in_y);
+	}
 }, true);
 
 </script>
-
+<hr />
+<a style='text-decoration:none;' href='gyoGan-dynamic.html?pull=1'>[image-pull]</a>
+<a style='text-decoration:none;' href='gyoGan-dynamic.html?pull=0'>[point-focus]</a>
